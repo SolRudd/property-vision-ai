@@ -53,6 +53,8 @@ function getStyleLabel(promptSummary) {
 
 async function persistConceptAndUsage({
   sessionId,
+  companySlug,
+  leadDestination,
   providerId,
   status,
   usage,
@@ -65,6 +67,8 @@ async function persistConceptAndUsage({
   try {
     conceptRecord = await saveConceptRecord({
       sessionId,
+      companySlug,
+      leadDestination,
       provider: providerId,
       mode: result.isDemo ? 'demo' : 'live',
       quality: imageQuality,
@@ -86,6 +90,7 @@ async function persistConceptAndUsage({
     await saveUsageRecord({
       sessionId,
       conceptId: conceptRecord?.id || null,
+      companySlug,
       eventType: 'generation',
       status,
       provider: providerId,
@@ -108,6 +113,7 @@ async function persistConceptAndUsage({
 
 async function persistUsageFailure({
   sessionId,
+  companySlug,
   providerId,
   styleId,
   modifiers,
@@ -121,6 +127,7 @@ async function persistUsageFailure({
     await saveUsageRecord({
       sessionId,
       conceptId: null,
+      companySlug,
       eventType: 'generation',
       status,
       provider: providerId,
@@ -150,6 +157,8 @@ export async function POST(request) {
   let modifiers = []
   let preserveLayout = 'strong'
   let sanitizedOptionalNote = ''
+  let companySlug = 'public'
+  let leadDestination = null
 
   try {
     const body = await request.json()
@@ -157,6 +166,11 @@ export async function POST(request) {
     styleId = body.styleId
     modifiers = Array.isArray(body.modifiers) ? body.modifiers : []
     preserveLayout = body.preserveLayout || 'strong'
+    companySlug = String(body.companySlug || 'public').trim() || 'public'
+    leadDestination =
+      body.leadDestination && typeof body.leadDestination === 'object'
+        ? body.leadDestination
+        : null
     // Free users cannot send arbitrary prompt text. The server only accepts preset style/modifier inputs.
     // Optional notes are sanitised and treated as a minor preference only.
     // Free users default to strong layout preservation unless a controlled override is introduced later.
@@ -197,6 +211,8 @@ export async function POST(request) {
       const usage = completeGeneration(sessionId, config)
       const conceptRecord = await persistConceptAndUsage({
         sessionId,
+        companySlug,
+        leadDestination,
         providerId,
         status: 'demo',
         usage,
@@ -244,6 +260,8 @@ export async function POST(request) {
     const usage = completeGeneration(sessionId, config)
     const conceptRecord = await persistConceptAndUsage({
       sessionId,
+      companySlug,
+      leadDestination,
       providerId,
       status: 'completed',
       usage,
@@ -276,6 +294,7 @@ export async function POST(request) {
 
     await persistUsageFailure({
       sessionId,
+      companySlug,
       providerId,
       styleId,
       modifiers,

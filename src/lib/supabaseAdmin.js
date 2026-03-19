@@ -63,6 +63,8 @@ export function isSupabaseConfigured() {
 
 export async function saveConceptRecord({
   sessionId,
+  companySlug,
+  leadDestination,
   provider,
   mode,
   quality,
@@ -80,6 +82,11 @@ export async function saveConceptRecord({
     'saved_concepts',
     {
       session_id: trimText(sessionId, 120),
+      company_slug: trimText(companySlug, 120),
+      lead_destination:
+        leadDestination && typeof leadDestination === 'object'
+          ? leadDestination
+          : {},
       provider: trimText(provider, 40),
       mode: trimText(mode, 20),
       quality: trimText(quality, 20),
@@ -104,6 +111,7 @@ export async function saveConceptRecord({
 export async function saveUsageRecord({
   sessionId,
   conceptId,
+  companySlug,
   eventType,
   status,
   provider,
@@ -122,6 +130,7 @@ export async function saveUsageRecord({
     {
       session_id: trimText(sessionId, 120),
       concept_id: trimText(conceptId, 120),
+      company_slug: trimText(companySlug, 120),
       event_type: trimText(eventType, 40),
       status: trimText(status, 40),
       provider: trimText(provider, 40),
@@ -146,6 +155,8 @@ export async function saveUsageRecord({
 export async function saveLeadRecord({
   sessionId,
   conceptId,
+  companySlug,
+  leadDestination,
   name,
   email,
   postcode,
@@ -159,6 +170,11 @@ export async function saveLeadRecord({
     {
       session_id: trimText(sessionId, 120),
       concept_id: trimText(conceptId, 120),
+      company_slug: trimText(companySlug, 120),
+      lead_destination:
+        leadDestination && typeof leadDestination === 'object'
+          ? leadDestination
+          : {},
       name: trimText(name, 120),
       email: trimText(email, 255),
       postcode: trimText(postcode, 32),

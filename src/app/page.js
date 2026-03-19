@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { CLIENT_APP_CONFIG, getResizeSettings } from '../lib/appConfig'
 import { OPTIONAL_NOTE_MAX_LENGTH, sanitizeOptionalNote } from '../lib/promptBuilder'
-import { SITE_CONFIG } from '../lib/siteConfig'
+import {
+  getPublicExperienceConfig,
+  resolveExperienceConfig,
+} from '../lib/companyConfigs'
 
-const JOURNEY_META_KEY = 'gv-journey-meta-v1'
-const JOURNEY_ASSET_KEY = 'gv-journey-assets-v1'
 const EMPTY_LEAD = { name: '', email: '', postcode: '', phone: '', notes: '' }
 
 const STYLES = [
@@ -70,22 +71,132 @@ const GEN_STAGES = [
   'Applying finishing details…',
 ]
 
+const HEIC_MIME_TYPES = new Set([
+  'image/heic',
+  'image/heif',
+  'image/heic-sequence',
+  'image/heif-sequence',
+])
+const HEIC_EXTENSION_PATTERN = /\.(heic|heif)$/i
+
+function buildJourneyMetaKey(landingKey) {
+  return `gv-journey-meta-v1:${landingKey}`
+}
+
+function buildJourneyAssetKey(landingKey) {
+  return `gv-journey-assets-v1:${landingKey}`
+}
+
+function buildThemeStyle(theme) {
+  return {
+    '--gv-bg': theme.background,
+    '--gv-ink': theme.ink,
+    '--gv-dark': theme.dark,
+    '--gv-dark-hover': theme.darkHover,
+    '--gv-accent': theme.accent,
+    '--gv-accent-soft': theme.accentSoft,
+    '--gv-accent-muted': theme.accentMuted,
+    '--gv-surface': theme.surface,
+    '--gv-surface-muted': theme.surfaceMuted,
+    '--gv-border': theme.border,
+    '--gv-subtle': theme.subtle,
+    '--gv-subtle-muted': theme.subtleMuted,
+    '--gv-cream': theme.cream,
+  }
+}
+
 function resizeImage(dataUrl, resizeSettings) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image()
     img.onload = () => {
       const scale = Math.min(1, resizeSettings.maxWidth / img.width)
       const canvas = document.createElement('canvas')
       canvas.width = img.width * scale
       canvas.height = img.height * scale
-      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+      const context = canvas.getContext('2d')
+
+      if (!context) {
+        reject(new Error('This browser could not prepare your image. Please try another photo.'))
+        return
+      }
+
+      context.drawImage(img, 0, 0, canvas.width, canvas.height)
       resolve(canvas.toDataURL('image/jpeg', resizeSettings.jpegQuality))
+    }
+    img.onerror = () => {
+      reject(new Error('This image could not be prepared. Please try another photo.'))
     }
     img.src = dataUrl
   })
 }
 
-async function callGenerateAPI(imageBase64, styleId, modifiers, preserveLayout, optionalNote = '') {
+function isHeicLikeFile(file) {
+  const fileType = String(file?.type || '').toLowerCase()
+  const fileName = String(file?.name || '').toLowerCase()
+
+  return HEIC_MIME_TYPES.has(fileType) || HEIC_EXTENSION_PATTERN.test(fileName)
+}
+
+function isAcceptedUploadFile(file) {
+  if (!file) return false
+
+  const fileType = String(file.type || '').toLowerCase()
+  return fileType.startsWith('image/') || isHeicLikeFile(file)
+}
+
+function readBlobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('This image could not be read. Please try another photo.'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function normaliseUploadPreview(file) {
+  if (!isHeicLikeFile(file)) {
+    return {
+      previewDataUrl: await readBlobAsDataUrl(file),
+      convertedFromHeic: false,
+    }
+  }
+
+  try {
+    const { default: heic2any } = await import('heic2any')
+    const converted = await heic2any({
+      blob: file,
+      toType: 'image/jpeg',
+      quality: 0.9,
+    })
+    const convertedBlob = Array.isArray(converted) ? converted[0] : converted
+
+    if (!(convertedBlob instanceof Blob)) {
+      throw new Error('Unexpected HEIC conversion result')
+    }
+
+    return {
+      // HEIC/HEIF is normalised to JPEG because browser support is inconsistent,
+      // especially across iPhone upload flows and non-Safari browsers.
+      previewDataUrl: await readBlobAsDataUrl(convertedBlob),
+      convertedFromHeic: true,
+    }
+  } catch (error) {
+    console.error('HEIC/HEIF conversion failed:', error)
+    throw new Error(
+      'This HEIC photo could not be prepared in this browser. Please try a different photo or export it as JPEG first.'
+    )
+  }
+}
+
+async function callGenerateAPI(
+  imageBase64,
+  styleId,
+  modifiers,
+  preserveLayout,
+  optionalNote = '',
+  companySlug = 'public',
+  leadDestination = null
+) {
   const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -95,6 +206,8 @@ async function callGenerateAPI(imageBase64, styleId, modifiers, preserveLayout, 
       modifiers,
       preserveLayout,
       optionalNote,
+      companySlug,
+      leadDestination,
     }),
   })
 
@@ -158,7 +271,14 @@ function buildDesignCommentary(styleId, modifiers = [], preserveLayout = 'strong
   return `${emphasis} ${PRESERVE_LAYOUT_COMMENTARY[preserveLayout] || PRESERVE_LAYOUT_COMMENTARY.strong}`
 }
 
-export default function App() {
+export default function App({ experienceConfig } = {}) {
+  const resolvedConfig = resolveExperienceConfig(
+    experienceConfig || getPublicExperienceConfig()
+  )
+  const landingKey = resolvedConfig.slug || 'public'
+  const journeyMetaKey = buildJourneyMetaKey(landingKey)
+  const journeyAssetKey = buildJourneyAssetKey(landingKey)
+  const themeStyle = buildThemeStyle(resolvedConfig.theme)
   const [runtimeConfig, setRuntimeConfig] = useState(CLIENT_APP_CONFIG)
   const [step, setStep] = useState('hero')
   const [uploadedImage, setUploadedImage] = useState(null)
@@ -172,6 +292,7 @@ export default function App() {
   const [genStage, setGenStage] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [genError, setGenError] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
   const [leadLoading, setLeadLoading] = useState(false)
   const [sessionUsage, setSessionUsage] = useState(createInitialUsageState(CLIENT_APP_CONFIG))
@@ -229,12 +350,12 @@ export default function App() {
     return () => {
       ignore = true
     }
-  }, [])
+  }, [journeyAssetKey, journeyMetaKey])
 
   useEffect(() => {
     try {
-      const storedMeta = window.localStorage.getItem(JOURNEY_META_KEY)
-      const storedAssets = window.sessionStorage.getItem(JOURNEY_ASSET_KEY)
+      const storedMeta = window.localStorage.getItem(journeyMetaKey)
+      const storedAssets = window.sessionStorage.getItem(journeyAssetKey)
 
       if (storedMeta) {
         const meta = JSON.parse(storedMeta)
@@ -283,7 +404,7 @@ export default function App() {
 
       if (shouldStoreMeta) {
         window.localStorage.setItem(
-          JOURNEY_META_KEY,
+          journeyMetaKey,
           JSON.stringify({
             step: resolvedStep,
             selectedStyle,
@@ -296,12 +417,12 @@ export default function App() {
           })
         )
       } else {
-        window.localStorage.removeItem(JOURNEY_META_KEY)
+        window.localStorage.removeItem(journeyMetaKey)
       }
 
       if (shouldStoreAssets) {
         window.sessionStorage.setItem(
-          JOURNEY_ASSET_KEY,
+          journeyAssetKey,
           JSON.stringify({
             uploadedImage,
             resizedImage,
@@ -309,7 +430,7 @@ export default function App() {
           })
         )
       } else {
-        window.sessionStorage.removeItem(JOURNEY_ASSET_KEY)
+        window.sessionStorage.removeItem(journeyAssetKey)
       }
     } catch (error) {
       console.warn('Failed to persist local journey state', error)
@@ -325,33 +446,44 @@ export default function App() {
     compareTab,
     result,
     leadSubmitted,
+    journeyAssetKey,
+    journeyMetaKey,
   ])
 
   const handleFile = useCallback(async (file) => {
-    if (!file || !file.type.startsWith('image/')) return
+    if (!file) return
+    if (!isAcceptedUploadFile(file)) {
+      setUploadError('Please use a JPG, PNG, WEBP, HEIC, or HEIF image.')
+      return
+    }
     if (file.size > 25 * 1024 * 1024) {
-      alert('Please use an image under 25MB.')
+      setUploadError('Please use an image under 25MB.')
       return
     }
 
-    const reader = new FileReader()
-    reader.onload = async (event) => {
-      const original = event.target.result
+    setUploadError(null)
+    setGenError(null)
+
+    try {
+      const { previewDataUrl } = await normaliseUploadPreview(file)
       const resized = await resizeImage(
-        original,
+        previewDataUrl,
         getResizeSettings(runtimeConfig.FREE_IMAGE_QUALITY)
       )
 
       // Keep the UI preview faithful to the uploaded photo, but use the resized
       // working image for Gemini generation requests to reduce payload cost.
-      setUploadedImage(original)
+      setUploadedImage(previewDataUrl)
       setResizedImage(resized)
       setResult(null)
       setLeadSubmitted(false)
       setCompareTab('after')
       setStep('style')
+    } catch (error) {
+      setUploadError(
+        error.message || 'This photo could not be prepared. Please try another image.'
+      )
     }
-    reader.readAsDataURL(file)
   }, [runtimeConfig.FREE_IMAGE_QUALITY])
 
   const openFilePicker = useCallback(() => {
@@ -401,7 +533,9 @@ export default function App() {
         nextStyle,
         modifiers,
         nextPreserveLayout,
-        sanitizedOptionalNote
+        sanitizedOptionalNote,
+        resolvedConfig.slug,
+        resolvedConfig.leadDestination
       )
       window.clearInterval(stageTimer)
       setGenStage(GEN_STAGES.length - 1)
@@ -437,6 +571,10 @@ export default function App() {
     await submitLeadAPI({
       ...lead,
       conceptId: result?.conceptId || null,
+      companySlug: resolvedConfig.slug,
+      companyName: resolvedConfig.companyName,
+      websiteLink: resolvedConfig.websiteLink,
+      leadDestination: resolvedConfig.leadDestination,
       conceptSummary: result?.prompt?.summary,
       styleId: result?.styleId,
       styleLabel: STYLE_LABELS[result?.styleId] || null,
@@ -479,8 +617,8 @@ export default function App() {
   )
   const resetJourney = useCallback(() => {
     try {
-      window.localStorage.removeItem(JOURNEY_META_KEY)
-      window.sessionStorage.removeItem(JOURNEY_ASSET_KEY)
+      window.localStorage.removeItem(journeyMetaKey)
+      window.sessionStorage.removeItem(journeyAssetKey)
     } catch (error) {
       console.warn('Failed to clear local journey state', error)
     }
@@ -501,11 +639,12 @@ export default function App() {
     setGenStage(0)
     setDragging(false)
     setGenError(null)
+    setUploadError(null)
     setLeadSubmitted(false)
     setLeadLoading(false)
     setLead(EMPTY_LEAD)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [journeyAssetKey, journeyMetaKey])
   const activeResult = result || {
     styleId: selectedStyle,
     modifiers: selectedModifiers,
@@ -519,11 +658,21 @@ export default function App() {
   )
 
   return (
-    <div className="gv-app">
+    <div className="gv-app" style={themeStyle}>
       <header className="gv-header">
         <div className="gv-logo">
-          {SITE_CONFIG.logoPrimary}
-          {SITE_CONFIG.logoAccent && <span>{SITE_CONFIG.logoAccent}</span>}
+          {resolvedConfig.logo.imageSrc ? (
+            <img
+              src={resolvedConfig.logo.imageSrc}
+              alt={resolvedConfig.logo.alt || resolvedConfig.companyName}
+              className="gv-logo-img"
+            />
+          ) : (
+            <>
+              {resolvedConfig.logo.primaryText}
+              {resolvedConfig.logo.accentText && <span>{resolvedConfig.logo.accentText}</span>}
+            </>
+          )}
         </div>
         <div className="gv-header-actions">
           {hasJourneyState && (
@@ -536,7 +685,7 @@ export default function App() {
               Start again
             </button>
           )}
-          {SITE_CONFIG.companyTag && <span className="gv-badge-dark">{SITE_CONFIG.companyTag}</span>}
+          {resolvedConfig.companyTag && <span className="gv-badge-dark">{resolvedConfig.companyTag}</span>}
           <span className="gv-badge-green">✦ Free preview</span>
         </div>
       </header>
@@ -582,15 +731,18 @@ export default function App() {
               See your garden redesigned in minutes
             </div>
             <h1 className="gv-h1">
-              Your outdoor space,<br />
-              <em>beautifully reimagined</em>
+              {resolvedConfig.heroHeadline.split('\n').map((part, index, parts) => (
+                <span key={part}>
+                  {index === parts.length - 1 ? <em>{part}</em> : part}
+                  {index < parts.length - 1 && <br />}
+                </span>
+              ))}
             </h1>
             <p className="gv-hero-p">
-              Upload a photo of your garden, patio, or driveway. Choose a style.
-              Get a professionally inspired landscaping concept — ready to share with your landscaper.
+              {resolvedConfig.heroSubtext}
             </p>
             <button type="button" className="gv-cta" onClick={() => setStep('upload')}>
-              Begin your preview
+              {resolvedConfig.ctaLabel}
               <span className="gv-cta-arrow">→</span>
             </button>
             <p className="gv-hero-note">
@@ -631,6 +783,8 @@ export default function App() {
             <h2 className="gv-h2">Upload your garden photo</h2>
             <p className="gv-step-sub">A clear daylight photo gives the best results</p>
           </div>
+
+          {uploadError && <div className="gv-error">⚠ {uploadError}</div>}
 
           {uploadedImage && (
             <div className="gv-upload-return-card">
@@ -687,7 +841,7 @@ export default function App() {
             ref={fileRef}
             className="gv-file-input"
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             onChange={(event) => {
               handleFile(event.target.files[0])
               event.target.value = ''
@@ -698,6 +852,7 @@ export default function App() {
             <div className="gv-tip">✓ Use a photo taken in daylight</div>
             <div className="gv-tip">✓ Landscape orientation works best</div>
             <div className="gv-tip">✓ Include the full garden area if possible</div>
+            <div className="gv-tip">✓ iPhone HEIC and HEIF photos are supported</div>
           </div>
 
           {uploadedImage && (
@@ -953,7 +1108,7 @@ export default function App() {
                 )}
 
                 {runtimeConfig.ENABLE_WATERMARK && (
-                  <div className="gv-watermark">GardenVision AI · Concept Preview</div>
+                  <div className="gv-watermark">{resolvedConfig.companyName} · Concept Preview</div>
                 )}
               </div>
             </div>
@@ -1003,7 +1158,7 @@ export default function App() {
             <div className="gv-action-card primary" onClick={() => setStep('lead')}>
               <div className="gv-action-icon">✉</div>
               <div className="gv-action-name">Continue to consultation</div>
-              <div className="gv-action-desc">Share this concept with a landscaping specialist and keep the design direction intact</div>
+              <div className="gv-action-desc">Share this concept with {resolvedConfig.leadDestination.label} and keep the design direction intact</div>
             </div>
             <div className="gv-action-card" onClick={() => { setGenError(null); setStep('style') }}>
               <div className="gv-action-icon">↻</div>
@@ -1049,9 +1204,9 @@ export default function App() {
                 </button>
               </div>
               <div className="gv-lead-eyebrow">Concept continuation</div>
-              <h2 className="gv-h2 gv-h2-tight">{SITE_CONFIG.leadFormHeading}</h2>
+              <h2 className="gv-h2 gv-h2-tight">{resolvedConfig.leadFormHeading}</h2>
               <p className="gv-lead-sub">
-                Share your details to continue this design direction with a landscaping specialist who can turn it into a real proposal.
+                Share your details to continue this design direction with {resolvedConfig.leadDestination.label}, who can turn it into a real proposal.
               </p>
 
               {result && (
@@ -1135,11 +1290,11 @@ export default function App() {
                 </div>
 
                 <button type="submit" className="gv-cta gv-cta-form" disabled={leadLoading}>
-                  {leadLoading ? 'Preparing your consultation…' : `${SITE_CONFIG.leadFormCTA} →`}
+                  {leadLoading ? 'Preparing your consultation…' : `${resolvedConfig.leadFormCTA} →`}
                 </button>
 
                 <p className="gv-form-legal">
-                  Your details are used only to continue this concept conversation with a landscaping specialist.
+                  Your details are used only to continue this concept conversation with {resolvedConfig.leadDestination.label}.
                   We won&apos;t share them with third parties or send you unsolicited marketing.
                 </p>
               </form>
@@ -1170,7 +1325,14 @@ export default function App() {
 
       <footer className="gv-footer">
         <div className="gv-footer-inner">
-          <div className="gv-footer-logo">{SITE_CONFIG.name}</div>
+          <div className="gv-footer-logo">{resolvedConfig.companyName}</div>
+          {resolvedConfig.websiteLink && (
+            <p>
+              <a href={resolvedConfig.websiteLink} className="gv-footer-link" target="_blank" rel="noreferrer">
+                Visit website
+              </a>
+            </p>
+          )}
           <p>Concept images are for inspiration and planning purposes only.</p>
           <p>Results may not reflect exact final outcomes. Always consult a qualified landscaper before commencing work.</p>
         </div>

@@ -22,6 +22,7 @@ export const SITE_CONFIG = {
     'Upload a property photo and preview a premium landscaping concept that stays faithful to the real space.',
   url: normaliseSiteUrl(process.env.NEXT_PUBLIC_SITE_URL),
   companyTag: process.env.NEXT_PUBLIC_COMPANY_TAG || null,
+  contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'hello@example.com',
   leadFormHeading:
     process.env.NEXT_PUBLIC_LEAD_FORM_HEADING || 'Request a landscaping quote',
   leadFormCTA:
@@ -31,6 +32,22 @@ export const SITE_CONFIG = {
 
 export function getCanonicalUrl(path = '/') {
   return new URL(path, `${SITE_CONFIG.url}/`).toString()
+}
+
+export function buildPageMetadata({ title, description, path }) {
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: getCanonicalUrl(path),
+    },
+    openGraph: {
+      title: `${title} | ${SITE_CONFIG.name}`,
+      description,
+      url: getCanonicalUrl(path),
+      siteName: SITE_CONFIG.name,
+    },
+  }
 }
 
 export function getSiteMetadata() {

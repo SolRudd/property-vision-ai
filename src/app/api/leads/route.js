@@ -43,6 +43,10 @@ export async function POST(request) {
       optionalNote,
       generationUsage,
       conceptId,
+      companySlug,
+      companyName,
+      websiteLink,
+      leadDestination,
     } = body
 
     if (!name || !email) {
@@ -61,6 +65,13 @@ export async function POST(request) {
         : [],
       preserveLayout,
       optionalNote: sanitizeOptionalNote(optionalNote),
+      companySlug,
+      companyName,
+      websiteLink,
+      leadDestination:
+        leadDestination && typeof leadDestination === 'object'
+          ? leadDestination
+          : null,
       generationUsage:
         generationUsage && typeof generationUsage === 'object'
           ? {
@@ -74,12 +85,14 @@ export async function POST(request) {
     await saveLeadRecord({
       sessionId: sessionContext.sessionId,
       conceptId,
+      companySlug,
+      leadDestination,
       name,
       email,
       postcode,
       phone,
       notes,
-      source: SITE_CONFIG.name,
+      source: companyName || SITE_CONFIG.name,
       conceptMetadata,
     })
 
@@ -99,8 +112,9 @@ export async function POST(request) {
           conceptSummary,
           styleId,
           conceptId,
+          companySlug,
           conceptMetadata,
-          source: SITE_CONFIG.name,
+          source: companyName || SITE_CONFIG.name,
           submittedAt: new Date().toISOString(),
         }),
       })
