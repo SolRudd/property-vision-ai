@@ -5,14 +5,83 @@
 // In production: connect to your CRM, email service, or Zapier.
 // ─────────────────────────────────────────────────────────────
 
+import { NextResponse } from 'next/server'
+import { sanitizeOptionalNote } from '../../../lib/promptBuilder'
+import { SITE_CONFIG } from '../../../lib/siteConfig'
+import { saveLeadRecord } from '../../../lib/supabaseAdmin'
+import {
+  applySessionCookie,
+  getSessionContext,
+} from '../../../lib/generation/sessionStore'
+
+function buildResponse(payload, { status = 200, sessionContext } = {}) {
+  const response = NextResponse.json(payload, { status })
+
+  if (sessionContext?.shouldSetCookie) {
+    applySessionCookie(response, sessionContext.sessionId)
+  }
+
+  return response
+}
+
 export async function POST(request) {
+  const sessionContext = getSessionContext(request)
+
   try {
     const body = await request.json()
-    const { name, email, postcode, phone, notes, conceptSummary, styleId } = body
+    const {
+      name,
+      email,
+      postcode,
+      phone,
+      notes,
+      conceptSummary,
+      styleId,
+      styleLabel,
+      modifiers = [],
+      preserveLayout,
+      optionalNote,
+      generationUsage,
+      conceptId,
+    } = body
 
     if (!name || !email) {
-      return Response.json({ error: 'Name and email required' }, { status: 400 })
+      return buildResponse(
+        { error: 'Name and email required' },
+        { status: 400, sessionContext }
+      )
     }
+
+    const conceptMetadata = {
+      conceptSummary,
+      styleId,
+      styleLabel,
+      modifiers: Array.isArray(modifiers)
+        ? modifiers.filter((modifier) => typeof modifier === 'string').slice(0, 4)
+        : [],
+      preserveLayout,
+      optionalNote: sanitizeOptionalNote(optionalNote),
+      generationUsage:
+        generationUsage && typeof generationUsage === 'object'
+          ? {
+              completedGenerations: generationUsage.completedGenerations ?? null,
+              remainingGenerations: generationUsage.remainingGenerations ?? null,
+              maxFreeGenerations: generationUsage.maxFreeGenerations ?? null,
+            }
+          : null,
+    }
+
+    await saveLeadRecord({
+      sessionId: sessionContext.sessionId,
+      conceptId,
+      name,
+      email,
+      postcode,
+      phone,
+      notes,
+      source: SITE_CONFIG.name,
+      conceptMetadata,
+    })
 
     const webhookUrl = process.env.LEAD_WEBHOOK_URL
 
@@ -29,18 +98,23 @@ export async function POST(request) {
           notes,
           conceptSummary,
           styleId,
-          source: 'GardenVision AI',
+          conceptId,
+          conceptMetadata,
+          source: SITE_CONFIG.name,
           submittedAt: new Date().toISOString(),
         }),
       })
     }
 
     // Always log to console in dev
-    console.log('New lead:', { name, email, postcode, conceptSummary })
+    console.log('New lead:', { name, email, postcode, conceptMetadata })
 
-    return Response.json({ success: true })
+    return buildResponse({ success: true }, { sessionContext })
   } catch (err) {
     console.error('Lead route error:', err)
-    return Response.json({ error: 'Failed to submit lead' }, { status: 500 })
+    return buildResponse(
+      { error: 'Failed to submit lead' },
+      { status: 500, sessionContext }
+    )
   }
 }

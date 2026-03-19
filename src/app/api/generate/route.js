@@ -1,76 +1,316 @@
-// src/app/api/generate/route.js
-// ─────────────────────────────────────────────────────────────
-// IMAGE GENERATION API ROUTE
-// Receives: { imageBase64, prompt, negativePrompt }
-// Returns:  { imageUrl } (base64 data URL)
-//
-// Uses Stability AI "image-to-image" endpoint so the generated
-// concept stays grounded in the user's actual uploaded photo.
-// Cost: ~$0.01–0.03 per generation at standard resolution.
-// ─────────────────────────────────────────────────────────────
+import { NextResponse } from 'next/server'
+import {
+  buildPublicAppConfig,
+  getServerAppConfig,
+} from '../../../lib/appConfig'
+import { getCachedGenerationMetadata } from '../../../lib/generation/metadataCache'
+import {
+  applySessionCookie,
+  completeGeneration,
+  getSessionContext,
+  getUsageSnapshot,
+  releaseGeneration,
+  reserveGeneration,
+} from '../../../lib/generation/sessionStore'
+import { buildPrompt, sanitizeOptionalNote } from '../../../lib/promptBuilder'
+import {
+  generateConceptImage,
+  getDefaultProviderId,
+  getProvider,
+} from '../../../lib/generation/providers'
+import {
+  saveConceptRecord,
+  saveUsageRecord,
+} from '../../../lib/supabaseAdmin'
+
+function buildResponse(payload, { status = 200, sessionContext } = {}) {
+  const response = NextResponse.json(payload, { status })
+
+  if (sessionContext?.shouldSetCookie) {
+    applySessionCookie(response, sessionContext.sessionId)
+  }
+
+  return response
+}
+
+function buildPromptPayload(prompt, providerId, imageQuality) {
+  return getCachedGenerationMetadata(
+    `${prompt.cacheKey}|${providerId}|${imageQuality}`,
+    () => ({
+      summary: prompt.summary,
+      preview: prompt.preview,
+      cacheKey: prompt.cacheKey,
+      quality: imageQuality,
+      optionalNote: prompt.optionalNote,
+      preserveLayout: prompt.preserveLayout,
+    })
+  )
+}
+
+function getStyleLabel(promptSummary) {
+  return String(promptSummary || '').split(' · ')[0] || null
+}
+
+async function persistConceptAndUsage({
+  sessionId,
+  providerId,
+  status,
+  usage,
+  prompt,
+  imageQuality,
+  result,
+}) {
+  let conceptRecord = null
+
+  try {
+    conceptRecord = await saveConceptRecord({
+      sessionId,
+      provider: providerId,
+      mode: result.isDemo ? 'demo' : 'live',
+      quality: imageQuality,
+      styleId: result.styleId,
+      styleLabel: getStyleLabel(prompt.summary),
+      modifiers: result.modifiers,
+      preserveLayout: result.preserveLayout,
+      optionalNote: prompt.optionalNote,
+      promptSummary: prompt.summary,
+      promptCacheKey: prompt.cacheKey,
+      imageUrl: result.imageUrl,
+      meta: result.meta,
+    })
+  } catch (persistError) {
+    console.error('Supabase concept persistence failed:', persistError)
+  }
+
+  try {
+    await saveUsageRecord({
+      sessionId,
+      conceptId: conceptRecord?.id || null,
+      eventType: 'generation',
+      status,
+      provider: providerId,
+      styleId: result.styleId,
+      modifiers: result.modifiers,
+      preserveLayout: result.preserveLayout,
+      optionalNote: prompt.optionalNote,
+      completedGenerations: usage.completedGenerations,
+      remainingGenerations: usage.remainingGenerations,
+      maxFreeGenerations: usage.maxFreeGenerations,
+      cooldownRemainingSeconds: usage.cooldownRemainingSeconds,
+      errorCode: null,
+    })
+  } catch (persistError) {
+    console.error('Supabase usage persistence failed:', persistError)
+  }
+
+  return conceptRecord
+}
+
+async function persistUsageFailure({
+  sessionId,
+  providerId,
+  styleId,
+  modifiers,
+  preserveLayout,
+  optionalNote,
+  usage,
+  error,
+  status,
+}) {
+  try {
+    await saveUsageRecord({
+      sessionId,
+      conceptId: null,
+      eventType: 'generation',
+      status,
+      provider: providerId,
+      styleId,
+      modifiers,
+      preserveLayout,
+      optionalNote,
+      completedGenerations: usage?.completedGenerations,
+      remainingGenerations: usage?.remainingGenerations,
+      maxFreeGenerations: usage?.maxFreeGenerations,
+      cooldownRemainingSeconds: usage?.cooldownRemainingSeconds,
+      errorCode: error?.code || error?.status || 'GENERATION_ERROR',
+    })
+  } catch (persistError) {
+    console.error('Supabase failure usage persistence failed:', persistError)
+  }
+}
 
 export async function POST(request) {
+  const config = getServerAppConfig()
+  const publicConfig = buildPublicAppConfig(config)
+  const sessionContext = getSessionContext(request)
+  const { sessionId } = sessionContext
+  let lockAcquired = false
+  let providerId = null
+  let styleId = null
+  let modifiers = []
+  let preserveLayout = 'strong'
+  let sanitizedOptionalNote = ''
+
   try {
-    const { imageBase64, prompt, negativePrompt } = await request.json()
+    const body = await request.json()
+    const { imageBase64, provider, optionalNote = '' } = body
+    styleId = body.styleId
+    modifiers = Array.isArray(body.modifiers) ? body.modifiers : []
+    preserveLayout = body.preserveLayout || 'strong'
+    // Free users cannot send arbitrary prompt text. The server only accepts preset style/modifier inputs.
+    // Optional notes are sanitised and treated as a minor preference only.
+    // Free users default to strong layout preservation unless a controlled override is introduced later.
+    providerId = provider || getDefaultProviderId()
+    const providerConfig = getProvider(providerId)
+    sanitizedOptionalNote = sanitizeOptionalNote(optionalNote)
 
-    if (!imageBase64 || !prompt) {
-      return Response.json({ error: 'Missing imageBase64 or prompt' }, { status: 400 })
-    }
-
-    const apiKey = process.env.STABILITY_API_KEY
-    if (!apiKey) {
-      return Response.json({ error: 'STABILITY_API_KEY not configured' }, { status: 500 })
-    }
-
-    // Strip the data URL prefix to get raw base64
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '')
-    const imageBuffer = Buffer.from(base64Data, 'base64')
-
-    // Build multipart form for Stability AI image-to-image
-    const formData = new FormData()
-    formData.append('init_image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'garden.jpg')
-    formData.append('init_image_mode', 'IMAGE_STRENGTH')
-    formData.append('image_strength', '0.35') // 0=ignore photo, 1=copy photo. 0.35 = strong influence
-    formData.append('text_prompts[0][text]', prompt)
-    formData.append('text_prompts[0][weight]', '1')
-    formData.append('text_prompts[1][text]', negativePrompt || '')
-    formData.append('text_prompts[1][weight]', '-1')
-    formData.append('cfg_scale', '8')
-    formData.append('samples', '1')
-    formData.append('steps', '40')
-    formData.append('style_preset', 'photographic')
-
-    const response = await fetch(
-      'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/image-to-image',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: 'application/json',
+    if (!imageBase64) {
+      return buildResponse(
+        {
+          error: 'Missing imageBase64',
+          usage: getUsageSnapshot(sessionId, config),
+          config: publicConfig,
         },
-        body: formData,
+        { status: 400, sessionContext }
+      )
+    }
+
+    if (!providerConfig) {
+      return buildResponse(
+        {
+          error: `Unknown provider: ${providerId}`,
+          usage: getUsageSnapshot(sessionId, config),
+          config: publicConfig,
+        },
+        { status: 400, sessionContext }
+      )
+    }
+
+    reserveGeneration(sessionId, config)
+    lockAcquired = true
+
+    const imageQuality = config.FREE_IMAGE_QUALITY
+    const prompt = buildPrompt(styleId, modifiers, preserveLayout, sanitizedOptionalNote)
+    const promptPayload = buildPromptPayload(prompt, providerId, imageQuality)
+
+    if (!providerConfig.isConfigured()) {
+      const usage = completeGeneration(sessionId, config)
+      const conceptRecord = await persistConceptAndUsage({
+        sessionId,
+        providerId,
+        status: 'demo',
+        usage,
+        prompt,
+        imageQuality,
+        result: {
+          imageUrl: imageBase64,
+          isDemo: true,
+          meta: {
+            provider: providerConfig.id,
+            mode: 'demo',
+            quality: imageQuality,
+          },
+          styleId,
+          modifiers,
+          preserveLayout,
+        },
+      })
+
+      return buildResponse(
+        {
+          imageUrl: imageBase64,
+          isDemo: true,
+          conceptId: conceptRecord?.id || null,
+          prompt: promptPayload,
+          usage,
+          config: publicConfig,
+          meta: {
+            provider: providerConfig.id,
+            mode: 'demo',
+            quality: imageQuality,
+          },
+        },
+        { sessionContext }
+      )
+    }
+
+    const result = await generateConceptImage({
+      provider: providerId,
+      imageBase64,
+      prompt,
+      quality: imageQuality,
+    })
+
+    const usage = completeGeneration(sessionId, config)
+    const conceptRecord = await persistConceptAndUsage({
+      sessionId,
+      providerId,
+      status: 'completed',
+      usage,
+      prompt,
+      imageQuality,
+      result: {
+        ...result,
+        styleId,
+        modifiers,
+        preserveLayout,
+      },
+    })
+
+    return buildResponse(
+      {
+        ...result,
+        conceptId: conceptRecord?.id || null,
+        prompt: promptPayload,
+        usage,
+        config: publicConfig,
+      },
+      { sessionContext }
+    )
+  } catch (error) {
+    console.error('Generate route error:', error)
+
+    const usage = lockAcquired
+      ? releaseGeneration(sessionId, config)
+      : getUsageSnapshot(sessionId, config)
+
+    await persistUsageFailure({
+      sessionId,
+      providerId,
+      styleId,
+      modifiers,
+      preserveLayout,
+      optionalNote: sanitizedOptionalNote,
+      usage: error.usage || usage,
+      error,
+      status: lockAcquired ? 'error' : 'blocked',
+    })
+
+    return buildResponse(
+      {
+        error: error.message || 'Internal server error',
+        code: error.code || 'GENERATION_ERROR',
+        usage: error.usage || usage,
+        config: publicConfig,
+      },
+      {
+        status: error.status || 500,
+        sessionContext,
       }
     )
-
-    if (!response.ok) {
-      const err = await response.text()
-      console.error('Stability AI error:', err)
-      return Response.json({ error: 'Image generation failed', detail: err }, { status: 500 })
-    }
-
-    const result = await response.json()
-    const generatedBase64 = result.artifacts?.[0]?.base64
-
-    if (!generatedBase64) {
-      return Response.json({ error: 'No image returned from Stability AI' }, { status: 500 })
-    }
-
-    return Response.json({
-      imageUrl: `data:image/png;base64,${generatedBase64}`,
-      isDemo: false,
-    })
-  } catch (err) {
-    console.error('Generate route error:', err)
-    return Response.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+export async function GET(request) {
+  const config = getServerAppConfig()
+  const publicConfig = buildPublicAppConfig(config)
+  const sessionContext = getSessionContext(request)
+
+  return buildResponse(
+    {
+      usage: getUsageSnapshot(sessionContext.sessionId, config),
+      config: publicConfig,
+    },
+    { sessionContext }
+  )
 }

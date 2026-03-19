@@ -1,9 +1,8 @@
 import './globals.css'
+import './gardenvision.css'
+import { getSiteMetadata } from '../lib/siteConfig'
 
-export const metadata = {
-  title: 'GardenVision AI — See your garden transformed',
-  description: 'Upload a photo of your garden and explore a professionally inspired landscaping concept in minutes.',
-}
+export const metadata = getSiteMetadata()
 
 export default function RootLayout({ children }) {
   return (

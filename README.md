@@ -47,7 +47,7 @@ This downloads all the libraries the app needs. Takes about 30 seconds.
 
 ---
 
-### Step 4 — Set up your API keys
+### Step 4 — Set up your local env file
 
 Copy the example env file:
 ```bash
@@ -57,22 +57,49 @@ cp .env.example .env.local
 Open `.env.local` in any text editor and fill in your keys:
 
 ```
+GEMINI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
-STABILITY_API_KEY=your_key_here
+LEAD_WEBHOOK_URL=your_webhook_here
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+MAX_FREE_GENERATIONS=3
+GENERATION_COOLDOWN_SECONDS=30
+ENABLE_WATERMARK=true
+FREE_IMAGE_QUALITY=standard
+PAID_IMAGE_QUALITY=high
+NEXT_PUBLIC_SITE_URL=https://yourdomain.com
+NEXT_PUBLIC_SITE_NAME=GardenVision AI
+NEXT_PUBLIC_SITE_SHORT_NAME=GardenVision
+NEXT_PUBLIC_SITE_DESCRIPTION=Upload a property photo and preview a premium landscaping concept that stays faithful to the real space.
+NEXT_PUBLIC_LOGO_PRIMARY=Garden
+NEXT_PUBLIC_LOGO_ACCENT=Vision
+NEXT_PUBLIC_COMPANY_TAG=
+NEXT_PUBLIC_LEAD_FORM_HEADING=Request a landscaping quote
+NEXT_PUBLIC_LEAD_FORM_CTA=Continue with this design
 ```
 
-**Getting your Anthropic key:**
-1. Go to https://console.anthropic.com
+Gemini is the default live provider and prompt orchestration path. Anthropic stays behind the same provider abstraction for later use, but it is not the active image generator today.
+
+Usage control note: the MVP currently tracks free-generation limits, cooldowns, and active locks with an httpOnly session cookie plus lightweight in-memory server state. This is fine for a lean initial deployment, but Redis / Vercel KV / a database session table should replace it for durable cross-instance enforcement.
+
+Supabase note: if `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present, the app will persist:
+- leads
+- saved concept metadata
+- lightweight generation usage records
+
+Apply the schema in [supabase/schema.sql](supabase/schema.sql) before going live.
+
+**Getting your Gemini key:**
+1. Go to https://aistudio.google.com
 2. Sign up / log in
-3. Click "API Keys" in the sidebar
+3. Click "Get API key"
 4. Click "Create Key" — copy it into `.env.local`
 
-**Getting your Stability AI key:**
-1. Go to https://platform.stability.ai
+**Getting your Anthropic key (optional for later provider work):**
+1. Go to https://console.anthropic.com
 2. Sign up / log in  
-3. Click your profile → "API Keys"
-4. Create a key — copy it into `.env.local`
-5. You'll need to add a small amount of credit (images cost ~$0.01–0.03 each)
+3. Click "API Keys" in the sidebar
+4. Click "Create Key" — copy it into `.env.local`
 
 ---
 
@@ -88,11 +115,11 @@ You should see the GardenVision app running. Upload a photo and try it!
 
 ---
 
-## Does it work without the Stability AI key?
+## Does it work without the Gemini key?
 
-**Yes — partially.** The full flow runs (upload → style → generation animation → result → lead form), and the Anthropic prompt building works. The "After" image will show your original photo with an overlay explaining the API isn't connected yet. Everything else works perfectly.
+**Yes — partially.** The full flow runs (upload → style → generation animation → result → lead form). If `GEMINI_API_KEY` is missing, the "After" view stays in demo mode and shows the composed landscaping prompt summary instead of a live generated image.
 
-Add the Stability key when you're ready for real image generation.
+Add the Gemini key when you're ready for live image generation.
 
 ---
 
@@ -119,7 +146,7 @@ git push -u origin main
 
 Replace `YOUR_USERNAME` with your actual GitHub username.
 
-**Important:** The `.gitignore` file already excludes `.env.local` — your API keys will NOT be pushed to GitHub.
+**Important:** The `.gitignore` file excludes `.env`, `.env.local`, and `.env.*.local` — your local secrets will NOT be pushed to GitHub.
 
 ---
 
@@ -131,17 +158,24 @@ The easiest way to put this live is **Vercel** — it's free for personal projec
 2. Click "Add New Project"
 3. Import your `gardenvision` repository
 4. Under "Environment Variables", add:
+   - `GEMINI_API_KEY` → your key
    - `ANTHROPIC_API_KEY` → your key
-   - `STABILITY_API_KEY` → your key
+   - `LEAD_WEBHOOK_URL` → your webhook URL
+   - `SUPABASE_URL` → your Supabase project URL
+   - `SUPABASE_SERVICE_ROLE_KEY` → your Supabase service role key
+   - `NEXT_PUBLIC_SITE_URL` → your final domain or Vercel URL
+   - `NEXT_PUBLIC_SITE_NAME` → your live brand name
 5. Click "Deploy"
 
 Vercel gives you a live URL like `https://gardenvision.vercel.app` in about 2 minutes.
+
+Before deployment, create a Supabase project and run the SQL in [supabase/schema.sql](supabase/schema.sql) inside the Supabase SQL editor.
 
 ---
 
 ## Wiring up the lead form
 
-Right now, submitted leads are logged to the console. To receive them:
+Lead submissions can now be stored in Supabase and optionally forwarded to a webhook. If Supabase is configured, the app also stores saved concept metadata and lightweight usage records.
 
 **Option A — Webhook (easiest):**
 1. Create a free account at https://zapier.com or https://make.com
@@ -166,11 +200,13 @@ gardenvision/
 │   │   ├── globals.css      ← Base styles
 │   │   └── api/
 │   │       ├── generate/
-│   │       │   └── route.js ← Stability AI image generation
+│   │       │   └── route.js ← Provider-backed concept generation
 │   │       └── leads/
 │   │           └── route.js ← Lead form submission
 │   └── lib/
-│       └── promptBuilder.js ← Style prompts + prompt logic
+│       ├── generation/
+│       │   └── providers/   ← Gemini live provider + Anthropic fallback slot
+│       └── promptBuilder.js ← Lean outdoor prompt logic
 ├── .env.example             ← Copy to .env.local
 ├── .env.local               ← Your actual keys (NOT in git)
 ├── .gitignore
@@ -183,17 +219,33 @@ gardenvision/
 
 ## B2B / White-label config
 
-To brand this for a specific landscaping company, edit the `BRAND` object at the top of `src/app/page.js`:
+Brand/domain settings now live in:
+- `src/lib/siteConfig.js`
+- `.env.local` via the `NEXT_PUBLIC_SITE_*` variables
 
-```js
-const BRAND = {
-  name: 'GardenVision AI',
-  companyTag: 'Prepared for Green Leaf Landscapes',  // Shows in header
-  leadFormHeading: 'Request a quote from Green Leaf',
-  leadFormCTA: 'Send my concept to Green Leaf',
-  freeGenerations: 5,   // How many free goes per session
-  watermark: false,     // Turn off watermark for paid clients
-}
+That config feeds:
+- header/footer branding
+- lead-form copy
+- metadata / Open Graph tags
+- sitemap / robots / canonical URLs
+
+The Supabase server adapter lives in:
+- `src/lib/supabaseAdmin.js`
+
+The automatic domain files live in:
+- `src/app/sitemap.js`
+- `src/app/robots.js`
+- `src/app/opengraph-image.js`
+- `src/app/icon.svg`
+
+Usage limits and rendering controls now live in `.env.local` via:
+
+```bash
+MAX_FREE_GENERATIONS=3
+GENERATION_COOLDOWN_SECONDS=30
+ENABLE_WATERMARK=true
+FREE_IMAGE_QUALITY=standard
+PAID_IMAGE_QUALITY=high
 ```
 
 ---
@@ -214,8 +266,8 @@ const BRAND = {
 
 | Service | Cost |
 |---|---|
-| Anthropic (prompt enhancement) | ~$0.001–0.003 per generation |
-| Stability AI (image generation) | ~$0.01–0.03 per generation |
+| Gemini (image generation) | Varies by model and usage |
+| Anthropic (future fallback slot) | Optional |
 | Vercel hosting | Free for personal use |
 
-A session using all 3 free generations costs roughly **£0.05–0.10** in AI API costs.
+A session using all 3 free generations depends on your selected Gemini model and image volume.

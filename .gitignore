@@ -4,6 +4,7 @@ node_modules/
 .pnp.js
 
 # env — NEVER commit real keys
+.env
 .env.local
 .env.*.local
 

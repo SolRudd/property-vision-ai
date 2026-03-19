@@ -1,0 +1,175 @@
+function trimText(value, maxLength) {
+  if (value == null) return null
+
+  const normalised = String(value).replace(/\s+/g, ' ').trim()
+  if (!normalised) return null
+
+  return typeof maxLength === 'number'
+    ? normalised.slice(0, maxLength)
+    : normalised
+}
+
+function getSupabaseConfig() {
+  const url = String(
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  )
+    .trim()
+    .replace(/\/$/, '')
+  const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+
+  return {
+    url,
+    serviceRoleKey,
+    isConfigured: Boolean(url && serviceRoleKey),
+  }
+}
+
+function buildRestUrl(baseUrl, table, select = '*') {
+  const params = new URLSearchParams({ select })
+  return `${baseUrl}/rest/v1/${table}?${params.toString()}`
+}
+
+async function insertRow(table, payload, { select = '*' } = {}) {
+  const config = getSupabaseConfig()
+
+  if (!config.isConfigured) {
+    return null
+  }
+
+  const response = await fetch(buildRestUrl(config.url, table, select), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      Prefer: 'return=representation',
+    },
+    cache: 'no-store',
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(`Supabase ${table} insert failed: ${detail || response.statusText}`)
+  }
+
+  const rows = await response.json()
+  return Array.isArray(rows) ? rows[0] || null : rows
+}
+
+export function isSupabaseConfigured() {
+  return getSupabaseConfig().isConfigured
+}
+
+export async function saveConceptRecord({
+  sessionId,
+  provider,
+  mode,
+  quality,
+  styleId,
+  styleLabel,
+  modifiers,
+  preserveLayout,
+  optionalNote,
+  promptSummary,
+  promptCacheKey,
+  imageUrl,
+  meta,
+}) {
+  return insertRow(
+    'saved_concepts',
+    {
+      session_id: trimText(sessionId, 120),
+      provider: trimText(provider, 40),
+      mode: trimText(mode, 20),
+      quality: trimText(quality, 20),
+      style_id: trimText(styleId, 80),
+      style_label: trimText(styleLabel, 120),
+      modifiers: Array.isArray(modifiers) ? modifiers.slice(0, 4) : [],
+      preserve_layout: trimText(preserveLayout, 20),
+      optional_note: trimText(optionalNote, 60),
+      prompt_summary: trimText(promptSummary, 500),
+      prompt_cache_key: trimText(promptCacheKey, 255),
+      result_image_url:
+        typeof imageUrl === 'string' && imageUrl.startsWith('data:')
+          ? null
+          : trimText(imageUrl, 2000),
+      result_image_inline: Boolean(typeof imageUrl === 'string' && imageUrl.startsWith('data:')),
+      meta: meta && typeof meta === 'object' ? meta : {},
+    },
+    { select: 'id,created_at' }
+  )
+}
+
+export async function saveUsageRecord({
+  sessionId,
+  conceptId,
+  eventType,
+  status,
+  provider,
+  styleId,
+  modifiers,
+  preserveLayout,
+  optionalNote,
+  completedGenerations,
+  remainingGenerations,
+  maxFreeGenerations,
+  cooldownRemainingSeconds,
+  errorCode,
+}) {
+  return insertRow(
+    'usage_records',
+    {
+      session_id: trimText(sessionId, 120),
+      concept_id: trimText(conceptId, 120),
+      event_type: trimText(eventType, 40),
+      status: trimText(status, 40),
+      provider: trimText(provider, 40),
+      style_id: trimText(styleId, 80),
+      modifiers: Array.isArray(modifiers) ? modifiers.slice(0, 4) : [],
+      preserve_layout: trimText(preserveLayout, 20),
+      optional_note: trimText(optionalNote, 60),
+      completed_generations:
+        typeof completedGenerations === 'number' ? completedGenerations : null,
+      remaining_generations:
+        typeof remainingGenerations === 'number' ? remainingGenerations : null,
+      max_free_generations:
+        typeof maxFreeGenerations === 'number' ? maxFreeGenerations : null,
+      cooldown_remaining_seconds:
+        typeof cooldownRemainingSeconds === 'number' ? cooldownRemainingSeconds : null,
+      error_code: trimText(errorCode, 80),
+    },
+    { select: 'id' }
+  )
+}
+
+export async function saveLeadRecord({
+  sessionId,
+  conceptId,
+  name,
+  email,
+  postcode,
+  phone,
+  notes,
+  source,
+  conceptMetadata,
+}) {
+  return insertRow(
+    'leads',
+    {
+      session_id: trimText(sessionId, 120),
+      concept_id: trimText(conceptId, 120),
+      name: trimText(name, 120),
+      email: trimText(email, 255),
+      postcode: trimText(postcode, 32),
+      phone: trimText(phone, 40),
+      notes: trimText(notes, 1200),
+      source: trimText(source, 120),
+      concept_metadata:
+        conceptMetadata && typeof conceptMetadata === 'object'
+          ? conceptMetadata
+          : {},
+    },
+    { select: 'id,created_at' }
+  )
+}

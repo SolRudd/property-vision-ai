@@ -1,48 +1,66 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
-import { buildPrompt, NEGATIVE_PROMPT } from '../lib/promptBuilder'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { CLIENT_APP_CONFIG, getResizeSettings } from '../lib/appConfig'
+import { OPTIONAL_NOTE_MAX_LENGTH, sanitizeOptionalNote } from '../lib/promptBuilder'
+import { SITE_CONFIG } from '../lib/siteConfig'
 
-// ─────────────────────────────────────────────────────────────
-// BRAND CONFIG — edit here for B2B / white-label
-// ─────────────────────────────────────────────────────────────
-const BRAND = {
-  name: 'GardenVision AI',
-  companyTag: null,             // e.g. 'Prepared for Green Leaf Landscapes'
-  leadFormHeading: 'Request a landscaping quote',
-  leadFormCTA: 'Send my concept to the team',
-  freeGenerations: 3,
-  watermark: true,
-}
+const JOURNEY_META_KEY = 'gv-journey-meta-v1'
+const JOURNEY_ASSET_KEY = 'gv-journey-assets-v1'
+const EMPTY_LEAD = { name: '', email: '', postcode: '', phone: '', notes: '' }
 
-// ─────────────────────────────────────────────────────────────
-// DATA
-// ─────────────────────────────────────────────────────────────
 const STYLES = [
-  { id: 'modern-minimal',  label: 'Modern Minimal',       emoji: '▪', desc: 'Porcelain paving, structured planting, sleek edges' },
-  { id: 'luxury-patio',    label: 'Luxury Patio',         emoji: '◈', desc: 'Premium stone, statement features, refined finish' },
-  { id: 'family-garden',   label: 'Family Garden',        emoji: '◉', desc: 'Safe lawn, colour, practical and beautiful' },
-  { id: 'cottage-garden',  label: 'Cottage Garden',       emoji: '✿', desc: 'Flowering borders, naturalistic, romantic' },
-  { id: 'contemporary',    label: 'Contemporary Living',  emoji: '◻', desc: 'Indoor-outdoor flow, architectural planting' },
-  { id: 'low-maintenance', label: 'Low Maintenance',      emoji: '◌', desc: 'Gravel, evergreens, minimal upkeep' },
-  { id: 'premium-drive',   label: 'Premium Driveway',     emoji: '◆', desc: 'Block paving, lighting, kerb appeal' },
-  { id: 'natural-planting',label: 'Natural Planting',     emoji: '❧', desc: 'Wildflower, native species, ecological' },
-  { id: 'entertaining',    label: 'Entertaining Space',   emoji: '◎', desc: 'Outdoor kitchen, dining, ambient lighting' },
-  { id: 'pergola-seating', label: 'Pergola & Seating',    emoji: '⌂', desc: 'Covered structure, climbing plants, shade' },
-  { id: 'japanese-zen',    label: 'Japanese Zen',         emoji: '○', desc: 'Raked gravel, bamboo, stone, calm geometry' },
-  { id: 'mediterranean',   label: 'Mediterranean',        emoji: '◑', desc: 'Terracotta, olives, lavender, warm tones' },
-  { id: 'tropical',        label: 'Tropical Garden',      emoji: '❋', desc: 'Lush exotic foliage, bold planting, vivid' },
-  { id: 'kitchen-garden',  label: 'Kitchen Garden',       emoji: '⊕', desc: 'Raised beds, herbs, fruit trees, productive beauty' },
-  { id: 'modern-formal',   label: 'Modern Formal',        emoji: '⊞', desc: 'Symmetry, clipped hedging, elegant geometry' },
+  { id: 'modern-minimal', label: 'Modern Minimal', emoji: '▪', desc: 'Porcelain paving, structured planting, sleek edges' },
+  { id: 'luxury-patio', label: 'Luxury Patio', emoji: '◈', desc: 'Premium stone, statement features, refined finish' },
+  { id: 'family-garden', label: 'Family Garden', emoji: '◉', desc: 'Safe lawn, colour, practical and beautiful' },
+  { id: 'cottage-garden', label: 'Cottage Garden', emoji: '✿', desc: 'Flowering borders, naturalistic, romantic' },
+  { id: 'contemporary', label: 'Contemporary Living', emoji: '◻', desc: 'Indoor-outdoor flow, architectural planting' },
+  { id: 'low-maintenance', label: 'Low Maintenance', emoji: '◌', desc: 'Gravel, evergreens, minimal upkeep' },
+  { id: 'premium-drive', label: 'Premium Driveway', emoji: '◆', desc: 'Block paving, lighting, kerb appeal' },
+  { id: 'natural-planting', label: 'Natural Planting', emoji: '❧', desc: 'Wildflower, native species, ecological' },
+  { id: 'entertaining', label: 'Entertaining Space', emoji: '◎', desc: 'Outdoor kitchen, dining, ambient lighting' },
+  { id: 'pergola-seating', label: 'Pergola & Seating', emoji: '⌂', desc: 'Covered structure, climbing plants, shade' },
+  { id: 'japanese-zen', label: 'Japanese Zen', emoji: '○', desc: 'Raked gravel, bamboo, stone, calm geometry' },
+  { id: 'mediterranean', label: 'Mediterranean', emoji: '◑', desc: 'Terracotta, olives, lavender, warm tones' },
+  { id: 'tropical', label: 'Tropical Garden', emoji: '❋', desc: 'Lush exotic foliage, bold planting, vivid' },
+  { id: 'kitchen-garden', label: 'Kitchen Garden', emoji: '⊕', desc: 'Raised beds, herbs, fruit trees, productive beauty' },
+  { id: 'modern-formal', label: 'Modern Formal', emoji: '⊞', desc: 'Symmetry, clipped hedging, elegant geometry' },
 ]
 
-const FEATURES = [
-  'Patio', 'Decking', 'Keep Lawn', 'Planting Borders',
-  'Outdoor Lighting', 'Privacy Screening', 'Seating Area',
-  'Water Feature', 'Child-Friendly', 'Pet-Friendly',
-  'Pergola', 'Artificial Grass', 'Fire Pit', 'Raised Beds',
-  'Garden Lighting', 'Outdoor Kitchen',
+const MODIFIERS = [
+  { id: 'more-premium', label: 'More premium' },
+  { id: 'more-planting', label: 'More planting' },
+  { id: 'lower-maintenance', label: 'Lower maintenance' },
+  { id: 'more-patio', label: 'More patio' },
 ]
+
+const PRESERVE_LAYOUT_OPTIONS = [
+  { id: 'strong', label: 'Strict', desc: 'Preserve geometry and boundaries as closely as possible' },
+  { id: 'medium', label: 'Balanced', desc: 'Allow modest refinement while keeping the same structure' },
+  { id: 'loose', label: 'Bolder', desc: 'Permit more visible styling changes within the same property' },
+]
+
+const VARIATIONS = [
+  { id: 'more-premium', label: 'More premium' },
+  { id: 'more-natural', label: 'More natural' },
+  { id: 'more-practical', label: 'More practical' },
+]
+
+const VARIATION_IDS = new Set(VARIATIONS.map((variation) => variation.id))
+const STYLE_LABELS = Object.fromEntries(STYLES.map((style) => [style.id, style.label]))
+const MODIFIER_COMMENTARY = {
+  'more-premium': 'richer hardscape materials and a more tailored finish',
+  'more-planting': 'deeper planting layers and softer green structure',
+  'lower-maintenance': 'practical planting choices with cleaner upkeep',
+  'more-patio': 'a stronger patio focus for outdoor living',
+  'more-natural': 'a softer, more natural planting character',
+  'more-practical': 'more usable circulation and everyday practicality',
+}
+const PRESERVE_LAYOUT_COMMENTARY = {
+  strong: 'The layout is kept closely aligned to the original property, so the concept feels realistic and immediately relatable.',
+  medium: 'The layout is refined carefully, balancing stronger design moves with the original site structure.',
+  loose: 'The layout takes a slightly bolder design direction while staying recognisably true to the same property.',
+}
 
 const GEN_STAGES = [
   'Analysing your outdoor space…',
@@ -52,448 +70,861 @@ const GEN_STAGES = [
   'Applying finishing details…',
 ]
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────
-
-// Resize uploaded image before sending to API — saves cost + bandwidth
-function resizeImage(dataUrl, maxWidth = 1024) {
+function resizeImage(dataUrl, resizeSettings) {
   return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => {
-      const scale = Math.min(1, maxWidth / img.width)
+      const scale = Math.min(1, resizeSettings.maxWidth / img.width)
       const canvas = document.createElement('canvas')
       canvas.width = img.width * scale
       canvas.height = img.height * scale
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-      resolve(canvas.toDataURL('image/jpeg', 0.88))
+      resolve(canvas.toDataURL('image/jpeg', resizeSettings.jpegQuality))
     }
     img.src = dataUrl
   })
 }
 
-async function callGenerateAPI(imageBase64, prompt) {
-  const res = await fetch('/api/generate', {
+async function callGenerateAPI(imageBase64, styleId, modifiers, preserveLayout, optionalNote = '') {
+  const response = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       imageBase64,
-      prompt: prompt.positive,
-      negativePrompt: prompt.negative,
+      styleId,
+      modifiers,
+      preserveLayout,
+      optionalNote,
     }),
   })
-  if (!res.ok) {
-    const err = await res.json()
-    throw new Error(err.error || 'Generation failed')
+
+  if (!response.ok) {
+    const err = await response.json()
+    const error = new Error(err.error || 'Generation failed')
+    error.usage = err.usage
+    error.code = err.code
+    error.config = err.config
+    throw error
   }
-  return res.json()
+
+  return response.json()
 }
 
 async function submitLeadAPI(data) {
-  const res = await fetch('/api/leads', {
+  const response = await fetch('/api/leads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  return res.json()
+  return response.json()
 }
 
-// ─────────────────────────────────────────────────────────────
-// STYLES (CSS-in-JS for single-file portability)
-// ─────────────────────────────────────────────────────────────
-const S = {
-  app: {
-    minHeight: '100vh',
-    background: '#f5f2ec',
-    fontFamily: "'DM Sans', sans-serif",
-  },
-  header: {
-    background: '#18261a',
-    padding: '18px 40px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
-  },
+function createInitialUsageState(config) {
+  return {
+    maxFreeGenerations: config.MAX_FREE_GENERATIONS,
+    completedGenerations: 0,
+    remainingGenerations: config.MAX_FREE_GENERATIONS,
+    cooldownRemainingSeconds: 0,
+    cooldownEndsAt: null,
+    activeGeneration: false,
+  }
 }
 
-// ─────────────────────────────────────────────────────────────
-// MAIN COMPONENT
-// ─────────────────────────────────────────────────────────────
+function normaliseStep(step, uploadedImage, selectedStyle, result) {
+  if (step === 'lead' && result) return 'lead'
+  if (step === 'result' && result) return 'result'
+  if (selectedStyle && uploadedImage) return 'style'
+  if (uploadedImage) return 'upload'
+  return 'hero'
+}
+
+function buildVariationModifiers(baseModifiers, variationId) {
+  const cleaned = baseModifiers.filter((modifier) => !VARIATION_IDS.has(modifier))
+  const trimmed = cleaned.slice(0, 2)
+  return variationId ? [...trimmed, variationId] : trimmed
+}
+
+function buildDesignCommentary(styleId, modifiers = [], preserveLayout = 'strong') {
+  const styleLabel = STYLE_LABELS[styleId] || 'selected'
+  const modifierNotes = modifiers
+    .map((modifier) => MODIFIER_COMMENTARY[modifier])
+    .filter(Boolean)
+    .slice(0, 2)
+
+  const emphasis = modifierNotes.length > 0
+    ? `The ${styleLabel} direction introduces ${modifierNotes.join(' and ')}.`
+    : `The ${styleLabel} direction focuses on premium materials, composed planting, and a polished exterior feel.`
+
+  return `${emphasis} ${PRESERVE_LAYOUT_COMMENTARY[preserveLayout] || PRESERVE_LAYOUT_COMMENTARY.strong}`
+}
+
 export default function App() {
-  const [step, setStep]                   = useState('hero')
+  const [runtimeConfig, setRuntimeConfig] = useState(CLIENT_APP_CONFIG)
+  const [step, setStep] = useState('hero')
   const [uploadedImage, setUploadedImage] = useState(null)
-  const [resizedImage, setResizedImage]   = useState(null)
+  const [resizedImage, setResizedImage] = useState(null)
   const [selectedStyle, setSelectedStyle] = useState(null)
-  const [selectedFeatures, setSelectedFeatures] = useState([])
-  const [result, setResult]               = useState(null)
-  const [compareTab, setCompareTab]       = useState('after')
-  const [genStage, setGenStage]           = useState(0)
-  const [generations, setGenerations]     = useState(0)
-  const [dragging, setDragging]           = useState(false)
-  const [genError, setGenError]           = useState(null)
+  const [selectedModifiers, setSelectedModifiers] = useState([])
+  const [preserveLayout, setPreserveLayout] = useState('strong')
+  const [optionalNote, setOptionalNote] = useState('')
+  const [result, setResult] = useState(null)
+  const [compareTab, setCompareTab] = useState('after')
+  const [genStage, setGenStage] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const [genError, setGenError] = useState(null)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
-  const [leadLoading, setLeadLoading]     = useState(false)
-  const [lead, setLead] = useState({ name: '', email: '', postcode: '', phone: '', notes: '' })
+  const [leadLoading, setLeadLoading] = useState(false)
+  const [sessionUsage, setSessionUsage] = useState(createInitialUsageState(CLIENT_APP_CONFIG))
+  const [lead, setLead] = useState(EMPTY_LEAD)
 
   const fileRef = useRef(null)
-  const remaining = BRAND.freeGenerations - generations
+  const fileInputId = useId()
+  const hasRestoredJourney = useRef(false)
 
-  // ── Upload ──────────────────────────────────────────────────
+  const remaining = sessionUsage.remainingGenerations
+  const isGenerating = step === 'generating'
+
+  useEffect(() => {
+    if (!sessionUsage.cooldownEndsAt) return undefined
+
+    const syncCooldown = () => {
+      setSessionUsage((prev) => {
+        if (!prev.cooldownEndsAt) return prev
+
+        const remainingSeconds = Math.max(
+          0,
+          Math.ceil((prev.cooldownEndsAt - Date.now()) / 1000)
+        )
+
+        if (remainingSeconds === prev.cooldownRemainingSeconds) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          cooldownRemainingSeconds: remainingSeconds,
+          cooldownEndsAt: remainingSeconds > 0 ? prev.cooldownEndsAt : null,
+        }
+      })
+    }
+
+    syncCooldown()
+    const intervalId = window.setInterval(syncCooldown, 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [sessionUsage.cooldownEndsAt])
+
+  useEffect(() => {
+    let ignore = false
+
+    fetch('/api/generate')
+      .then((response) => response.json())
+      .then((data) => {
+        if (ignore) return
+        if (data.config) setRuntimeConfig(data.config)
+        if (data.usage) setSessionUsage(data.usage)
+      })
+      .catch(() => {})
+
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  useEffect(() => {
+    try {
+      const storedMeta = window.localStorage.getItem(JOURNEY_META_KEY)
+      const storedAssets = window.sessionStorage.getItem(JOURNEY_ASSET_KEY)
+
+      if (storedMeta) {
+        const meta = JSON.parse(storedMeta)
+        setSelectedStyle(meta.selectedStyle || null)
+        setSelectedModifiers(Array.isArray(meta.selectedModifiers) ? meta.selectedModifiers : [])
+        setPreserveLayout(meta.preserveLayout || 'strong')
+        setOptionalNote(sanitizeOptionalNote(meta.optionalNote || ''))
+        setCompareTab(meta.compareTab || 'after')
+        setLeadSubmitted(Boolean(meta.leadSubmitted))
+      }
+
+      if (storedAssets) {
+        const assets = JSON.parse(storedAssets)
+        setUploadedImage(assets.uploadedImage || null)
+        setResizedImage(assets.resizedImage || assets.uploadedImage || null)
+        setResult(assets.result || null)
+      }
+
+      const meta = storedMeta ? JSON.parse(storedMeta) : {}
+      const assets = storedAssets ? JSON.parse(storedAssets) : {}
+      setStep(normaliseStep(meta.step, assets.uploadedImage, meta.selectedStyle, assets.result))
+    } catch (error) {
+      console.warn('Failed to restore local journey state', error)
+    } finally {
+      hasRestoredJourney.current = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!hasRestoredJourney.current) return
+
+    try {
+      const resolvedStep = step === 'generating'
+        ? normaliseStep('style', uploadedImage, selectedStyle, result)
+        : step
+      const shouldStoreMeta = Boolean(
+        selectedStyle ||
+        selectedModifiers.length > 0 ||
+        optionalNote ||
+        preserveLayout !== 'strong' ||
+        compareTab !== 'after' ||
+        leadSubmitted ||
+        result
+      )
+      const shouldStoreAssets = Boolean(uploadedImage || resizedImage || result)
+
+      if (shouldStoreMeta) {
+        window.localStorage.setItem(
+          JOURNEY_META_KEY,
+          JSON.stringify({
+            step: resolvedStep,
+            selectedStyle,
+            selectedModifiers,
+            preserveLayout,
+            optionalNote,
+            compareTab,
+            resultSummary: result?.prompt?.summary || null,
+            leadSubmitted,
+          })
+        )
+      } else {
+        window.localStorage.removeItem(JOURNEY_META_KEY)
+      }
+
+      if (shouldStoreAssets) {
+        window.sessionStorage.setItem(
+          JOURNEY_ASSET_KEY,
+          JSON.stringify({
+            uploadedImage,
+            resizedImage,
+            result,
+          })
+        )
+      } else {
+        window.sessionStorage.removeItem(JOURNEY_ASSET_KEY)
+      }
+    } catch (error) {
+      console.warn('Failed to persist local journey state', error)
+    }
+  }, [
+    step,
+    uploadedImage,
+    resizedImage,
+    selectedStyle,
+    selectedModifiers,
+    preserveLayout,
+    optionalNote,
+    compareTab,
+    result,
+    leadSubmitted,
+  ])
+
   const handleFile = useCallback(async (file) => {
     if (!file || !file.type.startsWith('image/')) return
-    if (file.size > 25 * 1024 * 1024) { alert('Please use an image under 25MB.'); return }
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Please use an image under 25MB.')
+      return
+    }
+
     const reader = new FileReader()
-    reader.onload = async (e) => {
-      const original = e.target.result
+    reader.onload = async (event) => {
+      const original = event.target.result
+      const resized = await resizeImage(
+        original,
+        getResizeSettings(runtimeConfig.FREE_IMAGE_QUALITY)
+      )
+
+      // Keep the UI preview faithful to the uploaded photo, but use the resized
+      // working image for Gemini generation requests to reduce payload cost.
       setUploadedImage(original)
-      const resized = await resizeImage(original, 1024)
       setResizedImage(resized)
+      setResult(null)
+      setLeadSubmitted(false)
+      setCompareTab('after')
       setStep('style')
     }
     reader.readAsDataURL(file)
+  }, [runtimeConfig.FREE_IMAGE_QUALITY])
+
+  const openFilePicker = useCallback(() => {
+    fileRef.current?.click()
   }, [])
 
-  const onDrop = useCallback((e) => {
-    e.preventDefault(); setDragging(false)
-    handleFile(e.dataTransfer.files[0])
+  const onDrop = useCallback((event) => {
+    event.preventDefault()
+    setDragging(false)
+    handleFile(event.dataTransfer.files[0])
   }, [handleFile])
 
-  // ── Generation ──────────────────────────────────────────────
-  const generate = async () => {
-    if (!selectedStyle || !resizedImage) return
-    if (remaining <= 0) { setStep('lead'); return }
+  const runGeneration = async ({
+    modifiers = selectedModifiers,
+    nextStyle = selectedStyle,
+    nextPreserveLayout = preserveLayout,
+    nextOptionalNote = optionalNote,
+  } = {}) => {
+    if (!nextStyle || !resizedImage) return
+    if (remaining <= 0) {
+      setStep('lead')
+      return
+    }
+    if (sessionUsage.cooldownRemainingSeconds > 0) {
+      setGenError(`Please wait ${sessionUsage.cooldownRemainingSeconds}s before generating again.`)
+      return
+    }
+    if (isGenerating || sessionUsage.activeGeneration) {
+      setGenError('A generation is already in progress for this session.')
+      return
+    }
 
     setStep('generating')
     setGenStage(0)
     setGenError(null)
 
-    const featureLabels = selectedFeatures
-    const prompt = buildPrompt(selectedStyle, featureLabels)
-
-    const stageTimer = setInterval(() => {
-      setGenStage(s => Math.min(s + 1, GEN_STAGES.length - 1))
+    const stageTimer = window.setInterval(() => {
+      setGenStage((current) => Math.min(current + 1, GEN_STAGES.length - 1))
     }, 900)
 
     try {
-      const data = await callGenerateAPI(resizedImage, prompt)
-      clearInterval(stageTimer)
+      // The working image is the cost-controlled generation asset. The preview
+      // image remains the original upload for the client-side journey UI.
+      const sanitizedOptionalNote = sanitizeOptionalNote(nextOptionalNote)
+      const data = await callGenerateAPI(
+        resizedImage,
+        nextStyle,
+        modifiers,
+        nextPreserveLayout,
+        sanitizedOptionalNote
+      )
+      window.clearInterval(stageTimer)
       setGenStage(GEN_STAGES.length - 1)
-      await new Promise(r => setTimeout(r, 500))
-      setGenerations(g => g + 1)
-      setResult({ ...data, prompt, styleId: selectedStyle, features: featureLabels })
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      setRuntimeConfig(data.config || CLIENT_APP_CONFIG)
+      setSessionUsage(data.usage || createInitialUsageState(CLIENT_APP_CONFIG))
+      setSelectedStyle(nextStyle)
+      setSelectedModifiers(modifiers)
+      setPreserveLayout(nextPreserveLayout)
+      setOptionalNote(sanitizedOptionalNote)
+      setResult({
+        ...data,
+        styleId: nextStyle,
+        modifiers,
+        preserveLayout: nextPreserveLayout,
+        optionalNote: sanitizedOptionalNote,
+      })
       setCompareTab('after')
+      setLeadSubmitted(false)
       setStep('result')
-    } catch (err) {
-      clearInterval(stageTimer)
-      setGenError(err.message || 'Something went wrong. Please try again.')
+    } catch (error) {
+      window.clearInterval(stageTimer)
+      if (error.config) setRuntimeConfig(error.config)
+      if (error.usage) setSessionUsage(error.usage)
+      setGenError(error.message || 'Something went wrong. Please try again.')
       setStep('style')
     }
   }
 
-  // ── Lead form ───────────────────────────────────────────────
-  const submitLead = async (e) => {
-    e.preventDefault()
+  const submitLead = async (event) => {
+    event.preventDefault()
     setLeadLoading(true)
     await submitLeadAPI({
       ...lead,
+      conceptId: result?.conceptId || null,
       conceptSummary: result?.prompt?.summary,
       styleId: result?.styleId,
+      styleLabel: STYLE_LABELS[result?.styleId] || null,
+      modifiers: result?.modifiers || selectedModifiers,
+      preserveLayout: result?.preserveLayout || preserveLayout,
+      optionalNote: result?.optionalNote || optionalNote,
+      generationUsage: {
+        completedGenerations: sessionUsage.completedGenerations,
+        remainingGenerations: sessionUsage.remainingGenerations,
+        maxFreeGenerations: sessionUsage.maxFreeGenerations,
+      },
     })
     setLeadLoading(false)
     setLeadSubmitted(true)
   }
 
-  const toggleFeature = (f) =>
-    setSelectedFeatures(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
+  const toggleModifier = (modifierId) => {
+    setSelectedModifiers((prev) =>
+      prev.includes(modifierId)
+        ? prev.filter((value) => value !== modifierId)
+        : [...prev, modifierId]
+    )
+  }
 
-  // ─────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────
+  const selectedModifierLabels = selectedModifiers
+    .map((modifierId) => MODIFIERS.find((modifier) => modifier.id === modifierId)?.label)
+    .filter(Boolean)
+  const hasJourneyState = Boolean(
+    uploadedImage ||
+    resizedImage ||
+    selectedStyle ||
+    selectedModifiers.length > 0 ||
+    optionalNote ||
+    result ||
+    lead.name ||
+    lead.email ||
+    lead.postcode ||
+    lead.phone ||
+    lead.notes
+  )
+  const resetJourney = useCallback(() => {
+    try {
+      window.localStorage.removeItem(JOURNEY_META_KEY)
+      window.sessionStorage.removeItem(JOURNEY_ASSET_KEY)
+    } catch (error) {
+      console.warn('Failed to clear local journey state', error)
+    }
+
+    if (fileRef.current) {
+      fileRef.current.value = ''
+    }
+
+    setStep('hero')
+    setUploadedImage(null)
+    setResizedImage(null)
+    setSelectedStyle(null)
+    setSelectedModifiers([])
+    setPreserveLayout('strong')
+    setOptionalNote('')
+    setResult(null)
+    setCompareTab('after')
+    setGenStage(0)
+    setDragging(false)
+    setGenError(null)
+    setLeadSubmitted(false)
+    setLeadLoading(false)
+    setLead(EMPTY_LEAD)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+  const activeResult = result || {
+    styleId: selectedStyle,
+    modifiers: selectedModifiers,
+    preserveLayout,
+    optionalNote,
+  }
+  const resultCommentary = buildDesignCommentary(
+    activeResult?.styleId,
+    activeResult?.modifiers,
+    activeResult?.preserveLayout
+  )
+
   return (
-    <>
-      <style>{globalCSS}</style>
-      <div className="gv-app">
+    <div className="gv-app">
+      <header className="gv-header">
+        <div className="gv-logo">
+          {SITE_CONFIG.logoPrimary}
+          {SITE_CONFIG.logoAccent && <span>{SITE_CONFIG.logoAccent}</span>}
+        </div>
+        <div className="gv-header-actions">
+          {hasJourneyState && (
+            <button
+              type="button"
+              className="gv-header-reset"
+              onClick={resetJourney}
+              disabled={isGenerating}
+            >
+              Start again
+            </button>
+          )}
+          {SITE_CONFIG.companyTag && <span className="gv-badge-dark">{SITE_CONFIG.companyTag}</span>}
+          <span className="gv-badge-green">✦ Free preview</span>
+        </div>
+      </header>
 
-        {/* ── Header ── */}
-        <header className="gv-header">
-          <div className="gv-logo">Garden<span>Vision</span></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {BRAND.companyTag && <span className="gv-badge-dark">{BRAND.companyTag}</span>}
-            <span className="gv-badge-green">✦ Free preview</span>
-          </div>
-        </header>
+      {step !== 'hero' && (
+        <div className="gv-progress">
+          {['upload', 'style', 'generating', 'result'].map((progressStep, index, arr) => {
+            const stepOrder = ['upload', 'style', 'generating', 'result', 'lead']
+            const currentIdx = stepOrder.indexOf(step)
+            const thisIdx = stepOrder.indexOf(progressStep)
+            const isDone = currentIdx > thisIdx
+            const isActive = currentIdx === thisIdx
 
-        {/* ── Progress ── */}
-        {step !== 'hero' && (
-          <div className="gv-progress">
-            {['upload', 'style', 'generating', 'result'].map((s, i, arr) => {
-              const stepOrder = ['upload', 'style', 'generating', 'result', 'lead']
-              const currentIdx = stepOrder.indexOf(step)
-              const thisIdx = stepOrder.indexOf(s)
-              const isDone = currentIdx > thisIdx
-              const isActive = currentIdx === thisIdx
-              return (
-                <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < arr.length - 1 ? 1 : 'initial' }}>
-                  <div className={`gv-pstep${isActive ? ' active' : isDone ? ' done' : ''}`}>
-                    <div className="gv-pdot" />
-                    <span>{s === 'upload' ? 'Upload' : s === 'style' ? 'Style' : s === 'generating' ? 'Generating' : 'Result'}</span>
-                  </div>
-                  {i < arr.length - 1 && <div className="gv-pline" />}
+            return (
+              <div
+                key={progressStep}
+                className={`gv-progress-item${index < arr.length - 1 ? ' fill' : ''}`}
+              >
+                <div className={`gv-pstep${isActive ? ' active' : isDone ? ' done' : ''}`}>
+                  <div className="gv-pdot" />
+                  <span>
+                    {progressStep === 'upload'
+                      ? 'Upload'
+                      : progressStep === 'style'
+                        ? 'Style'
+                        : progressStep === 'generating'
+                          ? 'Generating'
+                          : 'Result'}
+                  </span>
                 </div>
-              )
-            })}
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════
-            HERO
-        ════════════════════════════════════════════ */}
-        {step === 'hero' && (
-          <div className="gv-fade">
-            <section className="gv-hero">
-              <div className="gv-eyebrow">
-                <span className="gv-eyebrow-dot" />
-                See your garden redesigned in minutes
+                {index < arr.length - 1 && <div className="gv-pline" />}
               </div>
-              <h1 className="gv-h1">
-                Your outdoor space,<br />
-                <em>beautifully reimagined</em>
-              </h1>
-              <p className="gv-hero-p">
-                Upload a photo of your garden, patio, or driveway. Choose a style.
-                Get a professionally inspired landscaping concept — ready to share with your landscaper.
-              </p>
-              <button className="gv-cta" onClick={() => setStep('upload')}>
-                Upload your photo
-                <span className="gv-cta-arrow">→</span>
-              </button>
-              <p className="gv-hero-note">
-                Concept images are for inspiration and planning purposes only · Free to try
-              </p>
-            </section>
+            )
+          })}
+        </div>
+      )}
 
-            {/* Trust row */}
-            <div className="gv-trust-row">
-              {[
-                { n: '15+', label: 'Design styles' },
-                { n: '60s',  label: 'Average generation time' },
-                { n: '100%', label: 'Based on your photo' },
-              ].map(t => (
-                <div key={t.n} className="gv-trust-card">
-                  <div className="gv-trust-n">{t.n}</div>
-                  <div className="gv-trust-label">{t.label}</div>
+      {step === 'hero' && (
+        <div className="gv-fade">
+          <section className="gv-hero">
+            <div className="gv-eyebrow">
+              <span className="gv-eyebrow-dot" />
+              See your garden redesigned in minutes
+            </div>
+            <h1 className="gv-h1">
+              Your outdoor space,<br />
+              <em>beautifully reimagined</em>
+            </h1>
+            <p className="gv-hero-p">
+              Upload a photo of your garden, patio, or driveway. Choose a style.
+              Get a professionally inspired landscaping concept — ready to share with your landscaper.
+            </p>
+            <button type="button" className="gv-cta" onClick={() => setStep('upload')}>
+              Begin your preview
+              <span className="gv-cta-arrow">→</span>
+            </button>
+            <p className="gv-hero-note">
+              Concept images are for inspiration and planning purposes only · Free to try
+            </p>
+          </section>
+
+          <div className="gv-trust-row">
+            {[
+              { n: '15+', label: 'Design styles' },
+              { n: '60s', label: 'Average generation time' },
+              { n: '100%', label: 'Based on your photo' },
+            ].map((item) => (
+              <div key={item.n} className="gv-trust-card">
+                <div className="gv-trust-n">{item.n}</div>
+                <div className="gv-trust-label">{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="gv-style-strip-wrap">
+            <div className="gv-section-label center">Available styles</div>
+            <div className="gv-style-strip">
+              {STYLES.map((style) => (
+                <div key={style.id} className="gv-strip-pill" onClick={() => setStep('upload')}>
+                  <span>{style.emoji}</span> {style.label}
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
 
-            {/* Style preview strip */}
-            <div className="gv-style-strip-wrap">
-              <div className="gv-section-label" style={{ textAlign: 'center', marginBottom: 24 }}>Available styles</div>
-              <div className="gv-style-strip">
-                {STYLES.map(s => (
-                  <div key={s.id} className="gv-strip-pill" onClick={() => { setStep('upload') }}>
-                    <span>{s.emoji}</span> {s.label}
-                  </div>
-                ))}
+      {step === 'upload' && (
+        <div className="gv-upload-wrap gv-fade">
+          <div className="gv-step-header center">
+            <div className="gv-step-num">Step 1 of 3</div>
+            <h2 className="gv-h2">Upload your garden photo</h2>
+            <p className="gv-step-sub">A clear daylight photo gives the best results</p>
+          </div>
+
+          {uploadedImage && (
+            <div className="gv-upload-return-card">
+              <img src={uploadedImage} alt="Current upload" className="gv-upload-return-img" />
+              <div className="gv-upload-return-footer">
+                <div>
+                  <div className="gv-upload-return-title">Current photo saved</div>
+                  <div className="gv-upload-return-sub">You can continue where you left off or replace the upload.</div>
+                </div>
+                <button
+                  type="button"
+                  className="gv-change-btn"
+                  onClick={() => setStep(selectedStyle ? 'style' : 'upload')}
+                >
+                  Resume journey
+                </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ════════════════════════════════════════════
-            UPLOAD
-        ════════════════════════════════════════════ */}
-        {step === 'upload' && (
-          <div className="gv-upload-wrap gv-fade">
-            <div className="gv-step-header" style={{ textAlign: 'center' }}>
-              <div className="gv-step-num">Step 1 of 3</div>
-              <h2 className="gv-h2">Upload your garden photo</h2>
-              <p className="gv-step-sub">A clear daylight photo gives the best results</p>
-            </div>
-
-            <div
-              className={`gv-dropzone${dragging ? ' dragging' : ''}`}
-              onDrop={onDrop}
-              onDragOver={e => { e.preventDefault(); setDragging(true) }}
-              onDragLeave={() => setDragging(false)}
-              onClick={() => fileRef.current?.click()}
+          <div
+            className={`gv-dropzone${dragging ? ' dragging' : ''}`}
+            onDrop={onDrop}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onClick={openFilePicker}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                openFilePicker()
+              }
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="gv-drop-icon">🌿</div>
+            <h3 className="gv-drop-title">Drag your photo here</h3>
+            <p className="gv-drop-sub">Or tap to browse from your device</p>
+            <label
+              htmlFor={fileInputId}
+              className="gv-upload-btn"
+              onClick={(event) => event.stopPropagation()}
             >
-              <div className="gv-drop-icon">🌿</div>
-              <h3 className="gv-drop-title">Drag your photo here</h3>
-              <p className="gv-drop-sub">Or tap to browse from your device</p>
-              <button
-                className="gv-upload-btn"
-                onClick={e => { e.stopPropagation(); fileRef.current?.click() }}
-              >
-                Choose photo
-              </button>
-              <p className="gv-drop-formats">JPG · PNG · WEBP · up to 25MB</p>
-            </div>
-            <input
-              ref={fileRef} type="file" accept="image/*"
-              style={{ display: 'none' }}
-              onChange={e => handleFile(e.target.files[0])}
-            />
-
-            <div className="gv-upload-tips">
-              <div className="gv-tip">✓ Use a photo taken in daylight</div>
-              <div className="gv-tip">✓ Landscape orientation works best</div>
-              <div className="gv-tip">✓ Include the full garden area if possible</div>
-            </div>
+              Select property photo
+            </label>
+            <p className="gv-drop-formats">JPG · PNG · WEBP · up to 25MB</p>
           </div>
-        )}
 
-        {/* ════════════════════════════════════════════
-            STYLE SELECTION
-        ════════════════════════════════════════════ */}
-        {step === 'style' && (
-          <div className="gv-main gv-fade">
-            {/* Uploaded preview */}
+          <input
+            id={fileInputId}
+            ref={fileRef}
+            className="gv-file-input"
+            type="file"
+            accept="image/*"
+            onChange={(event) => {
+              handleFile(event.target.files[0])
+              event.target.value = ''
+            }}
+          />
+
+          <div className="gv-upload-tips">
+            <div className="gv-tip">✓ Use a photo taken in daylight</div>
+            <div className="gv-tip">✓ Landscape orientation works best</div>
+            <div className="gv-tip">✓ Include the full garden area if possible</div>
+          </div>
+
+          {uploadedImage && (
+            <div className="gv-back-row">
+              <button type="button" className="gv-text-btn" onClick={() => setStep(selectedStyle ? 'style' : 'hero')}>
+                Continue to design selections →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 'style' && (
+        <div className="gv-main gv-fade">
+          {uploadedImage && (
             <div className="gv-preview-card">
               <img src={uploadedImage} alt="Your garden" className="gv-preview-img" />
               <div className="gv-preview-footer">
                 <span className="gv-preview-label">📸 Your uploaded photo</span>
-                <button className="gv-change-btn" onClick={() => {
-                  setUploadedImage(null); setResizedImage(null)
-                  setSelectedStyle(null); setSelectedFeatures([])
-                  setStep('upload')
-                }}>Change photo</button>
+                <button type="button" className="gv-change-btn" onClick={() => setStep('upload')}>
+                  Back to upload
+                </button>
               </div>
             </div>
+          )}
 
-            {/* Usage */}
-            <div className="gv-usage-bar">
-              <span className="gv-usage-label">Free concepts remaining</span>
-              <div className="gv-usage-track">
-                <div className="gv-usage-fill" style={{ width: `${Math.max(0, remaining / BRAND.freeGenerations) * 100}%` }} />
+          <div className="gv-usage-bar">
+            <span className="gv-usage-label">Free concepts remaining</span>
+            <div className="gv-usage-track">
+              <div
+                className="gv-usage-fill"
+                style={{ width: `${Math.max(0, remaining / sessionUsage.maxFreeGenerations) * 100}%` }}
+              />
+            </div>
+            <span className="gv-usage-count">{remaining} of {sessionUsage.maxFreeGenerations}</span>
+          </div>
+
+          {sessionUsage.cooldownRemainingSeconds > 0 && (
+            <div className="gv-cooldown-note">
+              Next generation available in {sessionUsage.cooldownRemainingSeconds}s
+            </div>
+          )}
+
+          {genError && <div className="gv-error">⚠ {genError}</div>}
+
+          <div className="gv-step-header">
+            <div className="gv-step-num">Step 2 of 3</div>
+            <h2 className="gv-h2">Choose your landscaping style</h2>
+            <p className="gv-step-sub">
+              Select the look and feel you&apos;d like to explore. Free concepts use preset styles and quick modifiers only.
+            </p>
+          </div>
+
+          <div className="gv-style-grid">
+            {STYLES.map((style) => (
+              <div
+                key={style.id}
+                className={`gv-style-card${selectedStyle === style.id ? ' selected' : ''}`}
+                onClick={() => setSelectedStyle(style.id)}
+              >
+                {selectedStyle === style.id && <div className="gv-style-check">✓</div>}
+                <div className="gv-style-emoji">{style.emoji}</div>
+                <div className="gv-style-name">{style.label}</div>
+                <div className="gv-style-desc">{style.desc}</div>
               </div>
-              <span className="gv-usage-count">{remaining} of {BRAND.freeGenerations}</span>
-            </div>
+            ))}
+          </div>
 
-            {/* Error */}
-            {genError && (
-              <div className="gv-error">⚠ {genError}</div>
-            )}
-
-            {/* Style picker */}
-            <div className="gv-step-header">
-              <div className="gv-step-num">Step 2 of 3</div>
-              <h2 className="gv-h2">Choose your landscaping style</h2>
-              <p className="gv-step-sub">Select the look and feel you'd like to explore</p>
-            </div>
-
-            <div className="gv-style-grid">
-              {STYLES.map(s => (
-                <div
-                  key={s.id}
-                  className={`gv-style-card${selectedStyle === s.id ? ' selected' : ''}`}
-                  onClick={() => setSelectedStyle(s.id)}
+          <div className="gv-preserve-section">
+            <div className="gv-section-label">Preserve the existing layout</div>
+            <div className="gv-preserve-grid">
+              {PRESERVE_LAYOUT_OPTIONS.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`gv-preserve-card${preserveLayout === option.id ? ' selected' : ''}`}
+                  onClick={() => setPreserveLayout(option.id)}
                 >
-                  {selectedStyle === s.id && <div className="gv-style-check">✓</div>}
-                  <div className="gv-style-emoji">{s.emoji}</div>
-                  <div className="gv-style-name">{s.label}</div>
-                  <div className="gv-style-desc">{s.desc}</div>
-                </div>
+                  <div className="gv-preserve-name">{option.label}</div>
+                  <div className="gv-preserve-desc">{option.desc}</div>
+                </button>
               ))}
             </div>
+          </div>
 
-            {/* Feature toggles */}
-            <div className="gv-features-section">
-              <div className="gv-section-label">Add elements to your concept <span className="gv-optional">(optional)</span></div>
-              <div className="gv-features-grid">
-                {FEATURES.map(f => (
-                  <button
-                    key={f}
-                    className={`gv-feature-toggle${selectedFeatures.includes(f) ? ' selected' : ''}`}
-                    onClick={() => toggleFeature(f)}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
+          <div className="gv-features-section">
+            <div className="gv-section-label">
+              Refine the concept <span className="gv-optional">(optional)</span>
             </div>
+            <div className="gv-features-grid">
+              {MODIFIERS.map((modifier) => (
+                <button
+                  key={modifier.id}
+                  type="button"
+                  className={`gv-feature-toggle${selectedModifiers.includes(modifier.id) ? ' selected' : ''}`}
+                  onClick={() => toggleModifier(modifier.id)}
+                >
+                  {modifier.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-            {/* Summary + CTA */}
-            {selectedStyle && (
-              <div className="gv-selection-summary">
-                <div className="gv-summary-label">Your selection</div>
-                <div className="gv-summary-text">
-                  {STYLES.find(s => s.id === selectedStyle)?.label}
-                  {selectedFeatures.length > 0 && ` · ${selectedFeatures.join(' · ')}`}
-                </div>
+          <div className="gv-note-section">
+            <div className="gv-section-label">
+              Optional note <span className="gv-optional">(kept short)</span>
+            </div>
+            <input
+              type="text"
+              maxLength={OPTIONAL_NOTE_MAX_LENGTH}
+              className="gv-form-input gv-note-input"
+              value={optionalNote}
+              placeholder="e.g. keep lawn, porcelain patio, lavender planting"
+              onChange={(event) => setOptionalNote(sanitizeOptionalNote(event.target.value))}
+            />
+            <div className="gv-note-meta">
+              <span className="gv-note-help">Used as a small styling preference only.</span>
+              <span className="gv-note-count">{optionalNote.length}/{OPTIONAL_NOTE_MAX_LENGTH}</span>
+            </div>
+          </div>
+
+          {selectedStyle && (
+            <div className="gv-selection-summary">
+              <div className="gv-summary-label">Your selection</div>
+              <div className="gv-summary-text">
+                {STYLES.find((style) => style.id === selectedStyle)?.label}
+                {selectedModifierLabels.length > 0 && ` · ${selectedModifierLabels.join(' · ')}`}
+                {` · ${PRESERVE_LAYOUT_OPTIONS.find((option) => option.id === preserveLayout)?.label}`}
               </div>
-            )}
-
-            <div className="gv-style-cta-row">
-              <button
-                className="gv-cta"
-                disabled={!selectedStyle}
-                onClick={generate}
-              >
-                {remaining <= 0 ? 'Upgrade to generate →' : 'Generate my concept →'}
-              </button>
-              {!selectedStyle && (
-                <span className="gv-cta-hint">Select a style above to continue</span>
+              {optionalNote && (
+                <div className="gv-summary-sub">Preference note: {optionalNote}</div>
               )}
             </div>
+          )}
+
+          <div className="gv-style-cta-row">
+            <button
+              type="button"
+              className="gv-cta"
+              disabled={!selectedStyle || sessionUsage.cooldownRemainingSeconds > 0 || isGenerating || sessionUsage.activeGeneration}
+              onClick={() => runGeneration()}
+            >
+              {remaining <= 0
+                ? 'Upgrade to generate →'
+                : sessionUsage.cooldownRemainingSeconds > 0
+                  ? `Cooldown ${sessionUsage.cooldownRemainingSeconds}s`
+                  : 'Create my design preview →'}
+            </button>
+            {!selectedStyle || sessionUsage.activeGeneration ? (
+              <span className="gv-cta-hint">
+                {!selectedStyle
+                  ? 'Select a style above to continue'
+                  : 'One generation can run at a time per session'}
+              </span>
+            ) : sessionUsage.cooldownRemainingSeconds > 0 ? (
+              <span className="gv-cta-hint">Server cooldown is active between free generations</span>
+            ) : null}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ════════════════════════════════════════════
-            GENERATING
-        ════════════════════════════════════════════ */}
-        {step === 'generating' && (
-          <div className="gv-gen-panel gv-fade">
-            <div className="gv-gen-anim">
-              <div className="gv-ring gv-ring1" />
-              <div className="gv-ring gv-ring2" />
-              <div className="gv-ring gv-ring3" />
-              <div className="gv-gen-center">✦</div>
-            </div>
-
-            <h2 className="gv-gen-title">{GEN_STAGES[genStage]}</h2>
-            <p className="gv-gen-sub">Creating your personalised landscaping concept</p>
-
-            <ul className="gv-gen-steps">
-              {GEN_STAGES.map((stage, i) => (
-                <li key={stage} className={`gv-gstep${i === genStage ? ' active' : i < genStage ? ' done' : ''}`}>
-                  <div className="gv-gstep-dot" />
-                  {stage}
-                </li>
-              ))}
-            </ul>
-
-            <p className="gv-gen-note">This usually takes 30–60 seconds</p>
+      {step === 'generating' && (
+        <div className="gv-gen-panel gv-fade">
+          <div className="gv-gen-anim">
+            <div className="gv-ring gv-ring1" />
+            <div className="gv-ring gv-ring2" />
+            <div className="gv-ring gv-ring3" />
+            <div className="gv-gen-center">✦</div>
           </div>
-        )}
 
-        {/* ════════════════════════════════════════════
-            RESULT
-        ════════════════════════════════════════════ */}
-        {step === 'result' && result && (
-          <div className="gv-main gv-fade">
-            <div className="gv-step-header">
-              <div className="gv-step-num" style={{ color: '#4a7c59' }}>Your concept is ready</div>
-              <h2 className="gv-h2">Your landscaping concept</h2>
+          <h2 className="gv-gen-title">{GEN_STAGES[genStage]}</h2>
+          <p className="gv-gen-sub">Creating your personalised landscaping concept</p>
+
+          <ul className="gv-gen-steps">
+            {GEN_STAGES.map((stage, index) => (
+              <li key={stage} className={`gv-gstep${index === genStage ? ' active' : index < genStage ? ' done' : ''}`}>
+                <div className="gv-gstep-dot" />
+                {stage}
+              </li>
+            ))}
+          </ul>
+
+          <p className="gv-gen-note">This usually takes 30–60 seconds</p>
+        </div>
+      )}
+
+      {step === 'result' && result && (
+        <div className="gv-main gv-fade gv-result-reveal">
+          <div className="gv-result-stage">
+            <div className="gv-step-header gv-result-header">
+              <div>
+                <div className="gv-step-num gv-step-num-ready">Your concept is ready</div>
+                <h2 className="gv-h2">Your landscaping concept</h2>
+                <p className="gv-step-sub">A faithful premium preview based on your property photo and design direction.</p>
+              </div>
+              <div className="gv-result-badges">
+                <span className="gv-result-badge">{STYLE_LABELS[result.styleId]}</span>
+                <span className="gv-result-badge muted">{PRESERVE_LAYOUT_OPTIONS.find((option) => option.id === result.preserveLayout)?.label} layout</span>
+              </div>
             </div>
+          </div>
 
-            {/* Compare viewer */}
-            <div className="gv-compare-card">
-              <div className="gv-compare-tabs">
-                {['before', 'after'].map(tab => (
+          <div className="gv-compare-card">
+            <div className="gv-compare-topbar">
+              <div className="gv-compare-copy">
+                <div className="gv-result-summary-label">Design preview</div>
+                <div className="gv-compare-title">Before and after</div>
+              </div>
+              <div className="gv-compare-switch" role="tablist" aria-label="Compare original and concept">
+                {['before', 'after'].map((tab) => (
                   <button
                     key={tab}
-                    className={`gv-ctab${compareTab === tab ? ' active' : ''}`}
+                    type="button"
+                    className={`gv-compare-chip${compareTab === tab ? ' active' : ''}`}
                     onClick={() => setCompareTab(tab)}
                   >
-                    {tab === 'before' ? '← Before (original)' : 'After (concept) →'}
+                    {tab === 'before' ? 'Original' : 'Concept'}
                   </button>
                 ))}
               </div>
+            </div>
 
+            <div className="gv-compare-frame">
+              <div className="gv-compare-state">
+                <span className="gv-compare-state-label">{compareTab === 'before' ? 'Original photo' : 'Landscape concept'}</span>
+                <span className="gv-compare-state-line" />
+              </div>
               <div className="gv-compare-img-wrap">
                 {compareTab === 'before' ? (
                   <img src={uploadedImage} alt="Before" className="gv-compare-img" />
@@ -502,393 +933,248 @@ export default function App() {
                     <img
                       src={result.isDemo ? uploadedImage : result.imageUrl}
                       alt="After concept"
-                      className="gv-compare-img"
-                      style={{ filter: result.isDemo ? 'saturate(1.2) contrast(1.08) brightness(1.04)' : 'none' }}
+                      className={`gv-compare-img${result.isDemo ? ' gv-demo-img' : ''}`}
                     />
                     {result.isDemo && (
                       <div className="gv-demo-notice">
                         <div className="gv-demo-inner">
-                          <div className="gv-demo-tag">Image API not connected</div>
+                          <div className="gv-demo-tag">Gemini key not configured</div>
                           <div className="gv-demo-msg">
-                            Add your <code>STABILITY_API_KEY</code> to <code>.env.local</code> to generate real concepts.
-                            The prompt has been composed — just plug in the API key.
+                            Add your <code>GEMINI_API_KEY</code> to <code>.env.local</code> to generate live concepts.
+                            Gemini remains the default live provider, with Anthropic reserved as a future fallback slot.
                           </div>
                           <div className="gv-demo-prompt">
-                            <strong>Prompt ready:</strong> {result.prompt?.positive?.slice(0, 120)}…
+                            <strong>Prompt ready:</strong> {result.prompt?.preview?.slice(0, 120)}…
                           </div>
                         </div>
                       </div>
                     )}
                   </>
                 )}
-                {BRAND.watermark && (
+
+                {runtimeConfig.ENABLE_WATERMARK && (
                   <div className="gv-watermark">GardenVision AI · Concept Preview</div>
                 )}
               </div>
+            </div>
 
-              <div className="gv-result-summary">
-                <div className="gv-result-summary-label">Concept details</div>
-                <div className="gv-result-summary-text">{result.prompt?.summary}</div>
+            <div className="gv-result-summary">
+              <div className="gv-result-summary-label">Design overview</div>
+              <div className="gv-result-summary-text">{result.prompt?.summary}</div>
+              <p className="gv-result-commentary">{resultCommentary}</p>
+              {result.optionalNote && (
+                <div className="gv-result-disclaimer">Preference note: {result.optionalNote}</div>
+              )}
+              {result.meta?.provider && (
                 <div className="gv-result-disclaimer">
-                  Concept images are for inspiration and planning purposes only. Results may vary.
+                  Provider: {result.meta.provider} · Quality: {result.meta.quality} · Layout: {result.prompt?.preserveLayout}
                 </div>
+              )}
+              <div className="gv-result-disclaimer">
+                Concept images are for inspiration and planning purposes only. Results may vary.
               </div>
             </div>
-
-            {/* Action cards */}
-            <div className="gv-action-grid">
-              <div className="gv-action-card primary" onClick={() => setStep('lead')}>
-                <div className="gv-action-icon">✉</div>
-                <div className="gv-action-name">Request a quote</div>
-                <div className="gv-action-desc">Connect with a landscaping specialist about this concept</div>
-              </div>
-              <div className="gv-action-card" onClick={() => { setGenError(null); setStep('style') }}>
-                <div className="gv-action-icon">↻</div>
-                <div className="gv-action-name">Try another style</div>
-                <div className="gv-action-desc">Regenerate with a different style or feature selection</div>
-              </div>
-            </div>
-
-            {/* Upgrade prompt */}
-            {remaining <= 1 && (
-              <div className="gv-upgrade-card">
-                <div className="gv-upgrade-inner">
-                  <div>
-                    <h3 className="gv-upgrade-title">Unlock unlimited concepts</h3>
-                    <p className="gv-upgrade-sub">You've used most of your free generations. Upgrade to explore further.</p>
-                    <ul className="gv-upgrade-list">
-                      <li>Unlimited concept generations</li>
-                      <li>Higher resolution outputs</li>
-                      <li>Multiple style variants at once</li>
-                      <li>No watermark — download and share</li>
-                      <li>Day to night and seasonal variations</li>
-                    </ul>
-                  </div>
-                  <button className="gv-upgrade-btn" onClick={() => setStep('lead')}>
-                    Upgrade my plan →
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <button className="gv-cta" style={{ width: '100%', justifyContent: 'center', marginTop: 8 }} onClick={() => setStep('lead')}>
-              Get a landscaping quote for this concept
-            </button>
           </div>
-        )}
 
-        {/* ════════════════════════════════════════════
-            LEAD FORM
-        ════════════════════════════════════════════ */}
-        {step === 'lead' && (
-          <div className="gv-main gv-fade">
-            {!leadSubmitted ? (
-              <div className="gv-lead-card">
-                <div className="gv-lead-eyebrow">Free consultation</div>
-                <h2 className="gv-h2" style={{ marginBottom: 8 }}>{BRAND.leadFormHeading}</h2>
-                <p className="gv-lead-sub">
-                  Share your details and we'll connect you with a landscaping specialist who can bring this concept to life.
-                </p>
+          <div className="gv-variation-card">
+            <div className="gv-section-label">Refine this direction</div>
+            <div className="gv-variation-grid">
+              {VARIATIONS.map((variation) => (
+                <button
+                  key={variation.id}
+                  type="button"
+                  className="gv-variation-btn"
+                  onClick={() => runGeneration({
+                    modifiers: buildVariationModifiers(result.modifiers || selectedModifiers, variation.id),
+                    nextStyle: result.styleId || selectedStyle,
+                    nextPreserveLayout: result.preserveLayout || preserveLayout,
+                    nextOptionalNote: result.optionalNote || optionalNote,
+                  })}
+                  disabled={sessionUsage.cooldownRemainingSeconds > 0 || isGenerating || sessionUsage.activeGeneration}
+                >
+                  {variation.label}
+                </button>
+              ))}
+            </div>
+            <p className="gv-variation-note">Each variation keeps the same property view and layout guidance while refining the styling direction.</p>
+          </div>
 
-                {result?.prompt?.summary && (
-                  <div className="gv-lead-concept-tag">
-                    📋 Concept attached: <strong>{result.prompt.summary}</strong>
-                  </div>
-                )}
+          <div className="gv-action-grid">
+            <div className="gv-action-card primary" onClick={() => setStep('lead')}>
+              <div className="gv-action-icon">✉</div>
+              <div className="gv-action-name">Continue to consultation</div>
+              <div className="gv-action-desc">Share this concept with a landscaping specialist and keep the design direction intact</div>
+            </div>
+            <div className="gv-action-card" onClick={() => { setGenError(null); setStep('style') }}>
+              <div className="gv-action-icon">↻</div>
+              <div className="gv-action-name">Refine my selections</div>
+              <div className="gv-action-desc">Return to styles, modifiers, and layout preservation without losing your current result</div>
+            </div>
+          </div>
 
-                <form onSubmit={submitLead} className="gv-lead-form">
-                  <div className="gv-form-row">
-                    <div className="gv-form-group">
-                      <label className="gv-form-label">Your name *</label>
-                      <input className="gv-form-input" required placeholder="Jane Smith"
-                        value={lead.name} onChange={e => setLead(l => ({ ...l, name: e.target.value }))} />
-                    </div>
-                    <div className="gv-form-group">
-                      <label className="gv-form-label">Email address *</label>
-                      <input className="gv-form-input" type="email" required placeholder="jane@example.com"
-                        value={lead.email} onChange={e => setLead(l => ({ ...l, email: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className="gv-form-row">
-                    <div className="gv-form-group">
-                      <label className="gv-form-label">Postcode / area *</label>
-                      <input className="gv-form-input" required placeholder="SS1 1AA"
-                        value={lead.postcode} onChange={e => setLead(l => ({ ...l, postcode: e.target.value }))} />
-                    </div>
-                    <div className="gv-form-group">
-                      <label className="gv-form-label">Phone number <span className="gv-optional">(optional)</span></label>
-                      <input className="gv-form-input" type="tel" placeholder="+44 7700 000 000"
-                        value={lead.phone} onChange={e => setLead(l => ({ ...l, phone: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div className="gv-form-group">
-                    <label className="gv-form-label">Tell us about your project <span className="gv-optional">(optional)</span></label>
-                    <textarea className="gv-form-input gv-textarea" placeholder="Timeline, budget, specific questions…"
-                      value={lead.notes} onChange={e => setLead(l => ({ ...l, notes: e.target.value }))} />
-                  </div>
-
-                  <button type="submit" className="gv-cta" style={{ width: '100%', justifyContent: 'center' }} disabled={leadLoading}>
-                    {leadLoading ? 'Sending…' : BRAND.leadFormCTA}
-                  </button>
-
-                  <p className="gv-form-legal">
-                    Your details are used only to connect you with a landscaping specialist.
-                    We won't share them with third parties or send you unsolicited marketing.
-                  </p>
-                </form>
-              </div>
-            ) : (
-              <div className="gv-lead-card" style={{ textAlign: 'center' }}>
-                <div className="gv-success-icon">✦</div>
-                <h2 className="gv-h2" style={{ marginBottom: 12 }}>
-                  Thank you, {lead.name.split(' ')[0] || 'there'}
-                </h2>
-                <p className="gv-lead-sub" style={{ marginBottom: 32 }}>
-                  We've received your concept request. A landscaping specialist will be in touch at <strong>{lead.email}</strong>.
-                </p>
-                <button className="gv-cta" onClick={() => {
-                  setLeadSubmitted(false); setStep('style')
-                  setSelectedStyle(null); setSelectedFeatures([])
-                }}>
-                  Generate another concept →
+          {remaining <= 1 && (
+            <div className="gv-upgrade-card">
+              <div className="gv-upgrade-inner">
+                <div>
+                  <h3 className="gv-upgrade-title">Unlock unlimited concepts</h3>
+                  <p className="gv-upgrade-sub">You&apos;ve used most of your free generations. Upgrade to explore further.</p>
+                  <ul className="gv-upgrade-list">
+                    <li>Unlimited concept generations</li>
+                    <li>Higher resolution outputs</li>
+                    <li>Multiple style variants at once</li>
+                    <li>No watermark — download and share</li>
+                    <li>Day to night and seasonal variations</li>
+                  </ul>
+                </div>
+                <button type="button" className="gv-upgrade-btn" onClick={() => setStep('lead')}>
+                  Upgrade my plan →
                 </button>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        {/* ── Footer ── */}
-        <footer className="gv-footer">
-          <div className="gv-footer-inner">
-            <div className="gv-footer-logo">GardenVision AI</div>
-            <p>Concept images are for inspiration and planning purposes only.</p>
-            <p>Results may not reflect exact final outcomes. Always consult a qualified landscaper before commencing work.</p>
-          </div>
-        </footer>
+          <button type="button" className="gv-cta gv-cta-full" onClick={() => setStep('lead')}>
+            Continue with this concept
+          </button>
+        </div>
+      )}
 
-      </div>
-    </>
+      {step === 'lead' && (
+        <div className="gv-main gv-fade">
+          {!leadSubmitted ? (
+            <div className="gv-lead-card">
+              <div className="gv-back-row">
+                <button type="button" className="gv-text-btn" onClick={() => setStep('result')}>
+                  ← Return to concept
+                </button>
+              </div>
+              <div className="gv-lead-eyebrow">Concept continuation</div>
+              <h2 className="gv-h2 gv-h2-tight">{SITE_CONFIG.leadFormHeading}</h2>
+              <p className="gv-lead-sub">
+                Share your details to continue this design direction with a landscaping specialist who can turn it into a real proposal.
+              </p>
+
+              {result && (
+                <div className="gv-lead-preview">
+                  <img
+                    src={result.isDemo ? uploadedImage : result.imageUrl}
+                    alt="Concept preview"
+                    className="gv-lead-preview-img"
+                  />
+                  <div className="gv-lead-preview-copy">
+                    <div className="gv-lead-preview-label">Your selected concept</div>
+                    <div className="gv-lead-preview-title">{result.prompt?.summary}</div>
+                    <p className="gv-lead-preview-text">{resultCommentary}</p>
+                    {result.optionalNote && (
+                      <p className="gv-lead-preview-note">Preference note: {result.optionalNote}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={submitLead} className="gv-lead-form">
+                <div className="gv-form-row">
+                  <div className="gv-form-group">
+                    <label className="gv-form-label">Your name *</label>
+                    <input
+                      className="gv-form-input"
+                      required
+                      placeholder="Jane Smith"
+                      value={lead.name}
+                      onChange={(event) => setLead((prev) => ({ ...prev, name: event.target.value }))}
+                    />
+                  </div>
+                  <div className="gv-form-group">
+                    <label className="gv-form-label">Email address *</label>
+                    <input
+                      className="gv-form-input"
+                      type="email"
+                      required
+                      placeholder="jane@example.com"
+                      value={lead.email}
+                      onChange={(event) => setLead((prev) => ({ ...prev, email: event.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="gv-form-row">
+                  <div className="gv-form-group">
+                    <label className="gv-form-label">Postcode / area *</label>
+                    <input
+                      className="gv-form-input"
+                      required
+                      placeholder="SS1 1AA"
+                      value={lead.postcode}
+                      onChange={(event) => setLead((prev) => ({ ...prev, postcode: event.target.value }))}
+                    />
+                  </div>
+                  <div className="gv-form-group">
+                    <label className="gv-form-label">
+                      Phone number <span className="gv-optional">(optional)</span>
+                    </label>
+                    <input
+                      className="gv-form-input"
+                      type="tel"
+                      placeholder="+44 7700 000 000"
+                      value={lead.phone}
+                      onChange={(event) => setLead((prev) => ({ ...prev, phone: event.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="gv-form-group">
+                  <label className="gv-form-label">
+                    Tell us about your project <span className="gv-optional">(optional)</span>
+                  </label>
+                  <textarea
+                    className="gv-form-input gv-textarea"
+                    placeholder="Timeline, budget, specific questions…"
+                    value={lead.notes}
+                    onChange={(event) => setLead((prev) => ({ ...prev, notes: event.target.value }))}
+                  />
+                </div>
+
+                <button type="submit" className="gv-cta gv-cta-form" disabled={leadLoading}>
+                  {leadLoading ? 'Preparing your consultation…' : `${SITE_CONFIG.leadFormCTA} →`}
+                </button>
+
+                <p className="gv-form-legal">
+                  Your details are used only to continue this concept conversation with a landscaping specialist.
+                  We won&apos;t share them with third parties or send you unsolicited marketing.
+                </p>
+              </form>
+            </div>
+          ) : (
+            <div className="gv-lead-card center">
+              <div className="gv-success-icon">✦</div>
+              <h2 className="gv-h2" style={{ marginBottom: 12 }}>
+                Thank you, {lead.name.split(' ')[0] || 'there'}
+              </h2>
+              <p className="gv-lead-sub gv-lead-sub-bottom">
+                Your concept has been shared. A landscaping specialist will be in touch at <strong>{lead.email}</strong>.
+              </p>
+              <button
+                type="button"
+                className="gv-cta"
+                onClick={() => {
+                  setLeadSubmitted(false)
+                  setStep('result')
+                }}
+              >
+                Return to my concept →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <footer className="gv-footer">
+        <div className="gv-footer-inner">
+          <div className="gv-footer-logo">{SITE_CONFIG.name}</div>
+          <p>Concept images are for inspiration and planning purposes only.</p>
+          <p>Results may not reflect exact final outcomes. Always consult a qualified landscaper before commencing work.</p>
+        </div>
+      </footer>
+    </div>
   )
 }
-
-// ─────────────────────────────────────────────────────────────
-// GLOBAL CSS
-// ─────────────────────────────────────────────────────────────
-const globalCSS = `
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,600&family=DM+Sans:wght@300;400;500&display=swap');
-
-.gv-app { min-height:100vh; background:#f5f2ec; color:#18261a; }
-
-/* Header */
-.gv-header { background:#18261a; padding:18px 40px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
-.gv-logo { font-family:'Cormorant Garamond',serif; color:#e6d9c0; font-size:22px; font-weight:600; letter-spacing:0.02em; }
-.gv-logo span { color:#7cb986; }
-.gv-badge-green { background:rgba(124,185,134,0.15); border:1px solid rgba(124,185,134,0.3); color:#7cb986; font-size:12px; padding:5px 14px; border-radius:20px; font-weight:500; }
-.gv-badge-dark { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:#e6d9c0; font-size:12px; padding:5px 14px; border-radius:20px; font-weight:400; }
-
-/* Progress */
-.gv-progress { background:#18261a; padding:0 40px 16px; display:flex; align-items:center; }
-.gv-pstep { display:flex; align-items:center; gap:8px; font-size:12px; color:rgba(230,217,192,0.3); font-weight:400; letter-spacing:0.06em; text-transform:uppercase; transition:color 0.3s; white-space:nowrap; }
-.gv-pstep.active { color:#e6d9c0; }
-.gv-pstep.done { color:#7cb986; }
-.gv-pdot { width:6px; height:6px; border-radius:50%; background:rgba(230,217,192,0.15); flex-shrink:0; transition:background 0.3s; }
-.gv-pstep.active .gv-pdot { background:#e6d9c0; }
-.gv-pstep.done .gv-pdot { background:#7cb986; }
-.gv-pline { flex:1; height:1px; background:rgba(230,217,192,0.08); margin:0 16px; }
-
-/* Hero */
-.gv-hero { max-width:840px; margin:0 auto; padding:88px 32px 64px; text-align:center; }
-.gv-eyebrow { display:inline-flex; align-items:center; gap:9px; background:#e8f4eb; color:#2d5438; font-size:13px; font-weight:500; padding:7px 18px; border-radius:24px; margin-bottom:32px; letter-spacing:0.02em; }
-.gv-eyebrow-dot { width:7px; height:7px; border-radius:50%; background:#4a7c59; flex-shrink:0; }
-.gv-h1 { font-family:'Cormorant Garamond',serif; font-size:clamp(44px,6.5vw,78px); font-weight:600; color:#18261a; line-height:1.06; margin-bottom:28px; letter-spacing:-0.025em; }
-.gv-h1 em { color:#4a7c59; font-style:italic; }
-.gv-h2 { font-family:'Cormorant Garamond',serif; font-size:36px; font-weight:600; color:#18261a; line-height:1.15; margin-bottom:6px; }
-.gv-hero-p { font-size:18px; color:#556b57; line-height:1.7; max-width:540px; margin:0 auto 44px; font-weight:300; }
-.gv-hero-note { font-size:13px; color:#94a895; margin-top:20px; }
-
-/* Trust row */
-.gv-trust-row { max-width:640px; margin:0 auto; padding:0 32px 48px; display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
-.gv-trust-card { background:#fff; border:1.5px solid #e4dfd6; border-radius:16px; padding:28px 16px; text-align:center; }
-.gv-trust-n { font-family:'Cormorant Garamond',serif; font-size:36px; font-weight:600; color:#18261a; margin-bottom:6px; }
-.gv-trust-label { font-size:13px; color:#7a8c7b; }
-
-/* Style strip */
-.gv-style-strip-wrap { max-width:900px; margin:0 auto; padding:0 32px 80px; }
-.gv-section-label { font-size:12px; font-weight:500; color:#18261a; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:16px; }
-.gv-optional { font-weight:400; color:#94a895; text-transform:none; letter-spacing:0; }
-.gv-style-strip { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
-.gv-strip-pill { background:#fff; border:1.5px solid #e4dfd6; border-radius:24px; padding:8px 18px; font-size:13px; color:#556b57; cursor:pointer; transition:all 0.2s; font-weight:400; }
-.gv-strip-pill:hover { border-color:#4a7c59; color:#2d5438; background:#f0f8f2; }
-
-/* Upload */
-.gv-upload-wrap { max-width:680px; margin:0 auto; padding:48px 24px 80px; }
-.gv-step-header { margin-bottom:32px; }
-.gv-step-num { font-size:12px; color:#4a7c59; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:8px; }
-.gv-step-sub { font-size:15px; color:#556b57; margin-top:8px; }
-.gv-dropzone { border:2px dashed #cdd8ce; border-radius:22px; background:#fff; padding:72px 40px; text-align:center; cursor:pointer; transition:all 0.25s; }
-.gv-dropzone:hover, .gv-dropzone.dragging { border-color:#4a7c59; background:#f0f8f2; }
-.gv-drop-icon { font-size:40px; margin-bottom:20px; }
-.gv-drop-title { font-size:19px; font-weight:500; color:#18261a; margin-bottom:10px; }
-.gv-drop-sub { font-size:14px; color:#94a895; margin-bottom:24px; }
-.gv-upload-btn { background:#18261a; color:#e6d9c0; border:none; padding:13px 28px; border-radius:9px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; transition:background 0.2s; letter-spacing:0.02em; }
-.gv-upload-btn:hover { background:#2e4831; }
-.gv-drop-formats { margin-top:16px; font-size:12px; color:#b0bcb1; }
-.gv-upload-tips { margin-top:28px; display:flex; flex-direction:column; gap:8px; }
-.gv-tip { font-size:13px; color:#7a8c7b; padding-left:2px; }
-
-/* Main content area */
-.gv-main { max-width:960px; margin:0 auto; padding:48px 24px 80px; }
-
-/* Preview card */
-.gv-preview-card { background:#fff; border-radius:18px; overflow:hidden; box-shadow:0 2px 32px rgba(24,38,26,0.07); margin-bottom:20px; }
-.gv-preview-img { width:100%; height:300px; object-fit:cover; display:block; }
-.gv-preview-footer { padding:14px 20px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #f0ede8; }
-.gv-preview-label { font-size:14px; color:#556b57; }
-.gv-change-btn { background:none; border:1.5px solid #cdd8ce; color:#4a7c59; padding:7px 16px; border-radius:7px; font-family:'DM Sans',sans-serif; font-size:13px; cursor:pointer; transition:all 0.2s; font-weight:500; }
-.gv-change-btn:hover { background:#f0f8f2; }
-
-/* Usage */
-.gv-usage-bar { background:#fff; border:1.5px solid #e4dfd6; border-radius:12px; padding:14px 18px; margin-bottom:28px; display:flex; align-items:center; gap:14px; }
-.gv-usage-label { font-size:13px; color:#556b57; flex:1; }
-.gv-usage-track { width:100px; height:5px; background:#f0ede8; border-radius:3px; overflow:hidden; }
-.gv-usage-fill { height:100%; background:#4a7c59; border-radius:3px; transition:width 0.5s; }
-.gv-usage-count { font-size:13px; font-weight:500; color:#18261a; }
-
-/* Error */
-.gv-error { background:#fff4f4; border:1.5px solid #f0c0c0; color:#8b2020; border-radius:10px; padding:12px 16px; margin-bottom:20px; font-size:14px; }
-
-/* Style grid */
-.gv-style-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:12px; margin-bottom:40px; }
-.gv-style-card { background:#fff; border:2px solid #e4dfd6; border-radius:14px; padding:20px 16px 18px; cursor:pointer; transition:all 0.2s; position:relative; }
-.gv-style-card:hover { border-color:#b8d4bc; transform:translateY(-2px); box-shadow:0 4px 16px rgba(74,124,89,0.1); }
-.gv-style-card.selected { border-color:#4a7c59; background:#f0f8f2; }
-.gv-style-check { position:absolute; top:12px; right:12px; width:20px; height:20px; border-radius:50%; background:#4a7c59; color:#fff; font-size:11px; display:flex; align-items:center; justify-content:center; font-weight:600; }
-.gv-style-emoji { font-size:20px; margin-bottom:10px; color:#4a7c59; }
-.gv-style-name { font-size:14px; font-weight:500; color:#18261a; margin-bottom:5px; }
-.gv-style-desc { font-size:12px; color:#94a895; line-height:1.45; }
-
-/* Feature toggles */
-.gv-features-section { margin-bottom:36px; }
-.gv-features-grid { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-.gv-feature-toggle { border:1.5px solid #ddd8d0; background:#fff; color:#556b57; padding:9px 18px; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; cursor:pointer; transition:all 0.2s; font-weight:400; }
-.gv-feature-toggle:hover { border-color:#4a7c59; color:#2d5438; }
-.gv-feature-toggle.selected { border-color:#4a7c59; background:#e8f4eb; color:#2d5438; font-weight:500; }
-
-/* Selection summary */
-.gv-selection-summary { background:#18261a; border-radius:12px; padding:16px 20px; margin-bottom:24px; }
-.gv-summary-label { font-size:11px; color:#7cb986; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:6px; }
-.gv-summary-text { font-size:14px; color:#e6d9c0; }
-
-/* CTA */
-.gv-cta { background:#18261a; color:#e6d9c0; border:none; padding:16px 32px; border-radius:10px; font-family:'DM Sans',sans-serif; font-size:16px; font-weight:500; cursor:pointer; transition:all 0.25s; letter-spacing:0.01em; display:inline-flex; align-items:center; gap:10px; }
-.gv-cta:hover { background:#2e4831; transform:translateY(-1px); }
-.gv-cta:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
-.gv-cta-arrow { font-size:18px; transition:transform 0.2s; }
-.gv-cta:hover .gv-cta-arrow { transform:translateX(3px); }
-.gv-cta-hint { font-size:13px; color:#94a895; }
-.gv-style-cta-row { display:flex; align-items:center; gap:20px; }
-
-/* Generation */
-.gv-gen-panel { max-width:600px; margin:0 auto; padding:80px 24px; text-align:center; }
-.gv-gen-anim { width:120px; height:120px; margin:0 auto 44px; position:relative; }
-.gv-ring { position:absolute; border-radius:50%; border:2px solid transparent; }
-.gv-ring1 { inset:0; border-top-color:#4a7c59; border-right-color:#4a7c59; animation:spin 3s linear infinite; }
-.gv-ring2 { inset:14px; border-top-color:#b8d4bc; animation:spin 2s linear infinite reverse; }
-.gv-ring3 { inset:28px; border-top-color:#e6d9c0; animation:spin 1.5s linear infinite; }
-.gv-gen-center { position:absolute; inset:40px; background:#18261a; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#7cb986; font-size:18px; }
-@keyframes spin { to { transform:rotate(360deg); } }
-.gv-gen-title { font-family:'Cormorant Garamond',serif; font-size:30px; font-weight:600; color:#18261a; margin-bottom:12px; }
-.gv-gen-sub { font-size:15px; color:#94a895; margin-bottom:36px; }
-.gv-gen-steps { list-style:none; text-align:left; display:inline-block; }
-.gv-gstep { display:flex; align-items:center; gap:12px; padding:10px 0; font-size:14px; color:#b0bcb1; transition:color 0.4s; }
-.gv-gstep.active { color:#18261a; }
-.gv-gstep.done { color:#4a7c59; }
-.gv-gstep-dot { width:7px; height:7px; border-radius:50%; background:#ddd8d0; flex-shrink:0; transition:background 0.4s; }
-.gv-gstep.active .gv-gstep-dot { background:#18261a; }
-.gv-gstep.done .gv-gstep-dot { background:#4a7c59; }
-.gv-gen-note { margin-top:36px; font-size:13px; color:#b0bcb1; }
-
-/* Compare */
-.gv-compare-card { background:#fff; border-radius:20px; overflow:hidden; box-shadow:0 2px 40px rgba(24,38,26,0.09); margin-bottom:24px; }
-.gv-compare-tabs { display:flex; border-bottom:1px solid #f0ede8; }
-.gv-ctab { flex:1; padding:14px; text-align:center; font-size:12px; font-weight:500; cursor:pointer; color:#b0bcb1; border:none; background:none; font-family:'DM Sans',sans-serif; border-bottom:2px solid transparent; margin-bottom:-1px; transition:all 0.2s; letter-spacing:0.05em; text-transform:uppercase; }
-.gv-ctab.active { color:#18261a; border-bottom-color:#4a7c59; }
-.gv-compare-img-wrap { position:relative; }
-.gv-compare-img { width:100%; height:440px; object-fit:cover; display:block; }
-.gv-demo-notice { position:absolute; inset:0; background:rgba(24,38,26,0.6); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; padding:32px; }
-.gv-demo-inner { max-width:460px; text-align:center; }
-.gv-demo-tag { font-size:12px; color:#7cb986; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:14px; }
-.gv-demo-msg { font-size:15px; color:rgba(230,217,192,0.85); line-height:1.6; margin-bottom:16px; }
-.gv-demo-msg code { background:rgba(255,255,255,0.1); padding:2px 8px; border-radius:4px; font-size:13px; }
-.gv-demo-prompt { font-size:12px; color:rgba(230,217,192,0.5); line-height:1.5; font-style:italic; text-align:left; }
-.gv-watermark { position:absolute; bottom:16px; right:16px; background:rgba(24,38,26,0.65); color:rgba(230,217,192,0.8); font-size:11px; padding:5px 13px; border-radius:5px; font-weight:500; letter-spacing:0.05em; backdrop-filter:blur(4px); }
-.gv-result-summary { background:#18261a; color:#e6d9c0; padding:20px 24px; }
-.gv-result-summary-label { font-size:11px; color:#7cb986; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:7px; }
-.gv-result-summary-text { font-size:15px; margin-bottom:10px; }
-.gv-result-disclaimer { font-size:12px; color:rgba(230,217,192,0.35); }
-
-/* Action grid */
-.gv-action-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px; }
-.gv-action-card { background:#fff; border:2px solid #e4dfd6; border-radius:16px; padding:28px 22px; cursor:pointer; transition:all 0.2s; }
-.gv-action-card:hover { border-color:#4a7c59; transform:translateY(-2px); box-shadow:0 4px 20px rgba(74,124,89,0.1); }
-.gv-action-card.primary { border-color:#4a7c59; background:#f0f8f2; }
-.gv-action-icon { font-size:24px; margin-bottom:12px; }
-.gv-action-name { font-size:15px; font-weight:500; color:#18261a; margin-bottom:6px; }
-.gv-action-desc { font-size:13px; color:#94a895; line-height:1.4; }
-
-/* Upgrade */
-.gv-upgrade-card { background:#18261a; border-radius:20px; padding:36px; margin-bottom:20px; overflow:hidden; position:relative; }
-.gv-upgrade-card::before { content:''; position:absolute; top:-60px; right:-60px; width:220px; height:220px; background:rgba(124,185,134,0.06); border-radius:50%; }
-.gv-upgrade-inner { position:relative; z-index:1; }
-.gv-upgrade-title { font-family:'Cormorant Garamond',serif; font-size:28px; font-weight:600; color:#e6d9c0; margin-bottom:8px; }
-.gv-upgrade-sub { font-size:14px; color:rgba(230,217,192,0.5); margin-bottom:20px; }
-.gv-upgrade-list { list-style:none; margin-bottom:28px; }
-.gv-upgrade-list li { font-size:13px; color:rgba(230,217,192,0.75); padding:5px 0 5px 20px; position:relative; }
-.gv-upgrade-list li::before { content:'✓'; position:absolute; left:0; color:#7cb986; font-weight:600; }
-.gv-upgrade-btn { background:#7cb986; color:#18261a; border:none; padding:13px 28px; border-radius:8px; font-family:'DM Sans',sans-serif; font-size:14px; font-weight:500; cursor:pointer; transition:all 0.2s; letter-spacing:0.02em; }
-.gv-upgrade-btn:hover { background:#8fcc9e; }
-
-/* Lead form */
-.gv-lead-card { background:#fff; border-radius:20px; padding:44px 40px; box-shadow:0 2px 40px rgba(24,38,26,0.07); max-width:660px; margin:0 auto; }
-.gv-lead-eyebrow { font-size:12px; color:#4a7c59; font-weight:500; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:10px; }
-.gv-lead-sub { font-size:15px; color:#7a8c7b; margin-bottom:24px; line-height:1.6; }
-.gv-lead-concept-tag { background:#f5f2ec; border-radius:10px; padding:13px 16px; margin-bottom:28px; font-size:13px; color:#556b57; }
-.gv-lead-concept-tag strong { color:#18261a; }
-.gv-lead-form { display:flex; flex-direction:column; gap:16px; }
-.gv-form-row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-.gv-form-group { display:flex; flex-direction:column; gap:7px; }
-.gv-form-label { font-size:12px; font-weight:500; color:#556b57; letter-spacing:0.04em; text-transform:uppercase; }
-.gv-form-input { background:#f7f4ef; border:1.5px solid #e4dfd6; border-radius:9px; padding:12px 15px; font-family:'DM Sans',sans-serif; font-size:14px; color:#18261a; outline:none; width:100%; transition:border-color 0.2s; }
-.gv-form-input:focus { border-color:#4a7c59; background:#fff; }
-.gv-textarea { resize:vertical; min-height:88px; }
-.gv-form-legal { font-size:12px; color:#b0bcb1; line-height:1.6; margin-top:4px; }
-
-/* Success */
-.gv-success-icon { font-size:44px; color:#4a7c59; margin-bottom:20px; }
-
-/* Footer */
-.gv-footer { background:#18261a; padding:40px; margin-top:40px; }
-.gv-footer-inner { max-width:640px; margin:0 auto; text-align:center; }
-.gv-footer-logo { font-family:'Cormorant Garamond',serif; color:#7cb986; font-size:18px; font-weight:600; margin-bottom:12px; }
-.gv-footer p { font-size:12px; color:rgba(230,217,192,0.3); line-height:1.7; }
-
-/* Fade animation */
-.gv-fade { animation:gvFade 0.45s ease forwards; }
-@keyframes gvFade { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-
-/* Mobile */
-@media (max-width:640px) {
-  .gv-header { padding:16px 20px; }
-  .gv-progress { padding:0 20px 14px; }
-  .gv-hero { padding:52px 20px 44px; }
-  .gv-main, .gv-upload-wrap { padding-left:16px; padding-right:16px; }
-  .gv-form-row { grid-template-columns:1fr; }
-  .gv-action-grid { grid-template-columns:1fr; }
-  .gv-style-grid { grid-template-columns:1fr 1fr; }
-  .gv-trust-row { grid-template-columns:repeat(3,1fr); gap:10px; }
-  .gv-trust-card { padding:20px 12px; }
-  .gv-trust-n { font-size:28px; }
-  .gv-lead-card { padding:28px 20px; }
-  .gv-compare-img { height:280px; }
-}
-`
