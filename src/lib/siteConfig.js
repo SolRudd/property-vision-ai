@@ -1,5 +1,7 @@
+const DEFAULT_SITE_URL = 'https://gardenvisionary.co.uk'
+
 function normaliseSiteUrl(value) {
-  const fallback = 'https://example.com'
+  const fallback = DEFAULT_SITE_URL
   const candidate = String(value || fallback).trim()
 
   if (!candidate) return fallback

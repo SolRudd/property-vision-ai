@@ -190,6 +190,7 @@ async function normaliseUploadPreview(file) {
 }
 
 async function callGenerateAPI(
+  originalImageBase64,
   imageBase64,
   styleId,
   modifiers,
@@ -202,6 +203,7 @@ async function callGenerateAPI(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      originalImageBase64,
       imageBase64,
       styleId,
       modifiers,
@@ -572,6 +574,7 @@ export default function App({ experienceConfig } = {}) {
       // image remains the original upload for the client-side journey UI.
       const sanitizedOptionalNote = sanitizeOptionalNote(nextOptionalNote)
       const data = await callGenerateAPI(
+        uploadedImage || resizedImage,
         resizedImage,
         nextStyle,
         modifiers,

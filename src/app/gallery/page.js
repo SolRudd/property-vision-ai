@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { buildPageMetadata, SITE_CONFIG } from '../../lib/siteConfig'
 import { isSupabaseConfigured, listConceptsForUser } from '../../lib/supabaseAdmin'
 import { getSupabaseAuthConfig, getSupabaseAuthState } from '../../lib/supabaseAuth'
+import { hydrateConceptStorageUrls } from '../../lib/supabaseStorage'
 
 export const metadata = {
   ...buildPageMetadata({
@@ -79,6 +80,7 @@ export default async function GalleryPage() {
   if (persistenceReady) {
     try {
       concepts = await listConceptsForUser(authState.user.id)
+      concepts = await hydrateConceptStorageUrls(concepts)
     } catch (error) {
       galleryUnavailable = true
       console.error('[gallery] Failed to load user concepts:', error)
@@ -139,12 +141,26 @@ export default async function GalleryPage() {
             <div className="gv-gallery-grid">
               {concepts.map((concept) => (
                 <article key={concept.id} className="gv-gallery-card">
-                  {concept.result_image_url ? (
-                    <img
-                      src={concept.result_image_url}
-                      alt={titleForConcept(concept)}
-                      className="gv-gallery-image"
-                    />
+                  {concept.resultImageUrl || concept.sourceImageUrl ? (
+                    <div className="gv-gallery-media">
+                      <img
+                        src={concept.resultImageUrl || concept.sourceImageUrl}
+                        alt={titleForConcept(concept)}
+                        className="gv-gallery-image"
+                      />
+                      {concept.sourceImageUrl &&
+                        concept.resultImageUrl &&
+                        concept.sourceImageUrl !== concept.resultImageUrl && (
+                        <div className="gv-gallery-source-thumb">
+                          <img
+                            src={concept.sourceImageUrl}
+                            alt="Original upload"
+                            className="gv-gallery-source-image"
+                          />
+                          <span className="gv-gallery-source-label">Original</span>
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="gv-gallery-placeholder">
                       <div className="gv-gallery-placeholder-kicker">Saved concept</div>

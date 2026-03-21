@@ -24,6 +24,7 @@ import {
   saveUsageRecord,
 } from '../../../lib/supabaseAdmin'
 import { getSupabaseAuthState } from '../../../lib/supabaseAuth'
+import { uploadConceptImageAsset } from '../../../lib/supabaseStorage'
 
 function buildResponse(payload, { status = 200, sessionContext } = {}) {
   const response = NextResponse.json(payload, { status })
@@ -71,9 +72,40 @@ async function persistConceptAndUsage({
   usage,
   prompt,
   imageQuality,
+  originalImageBase64,
   result,
 }) {
   let conceptRecord = null
+  let storageMeta = null
+
+  try {
+    const sourceAsset = await uploadConceptImageAsset({
+      dataUrl: originalImageBase64,
+      kind: 'source',
+      userId,
+      sessionId,
+      companySlug,
+    })
+    const resultAsset =
+      result.imageUrl === originalImageBase64 && sourceAsset
+        ? sourceAsset
+        : await uploadConceptImageAsset({
+            dataUrl: result.imageUrl,
+            kind: 'result',
+            userId,
+            sessionId,
+            companySlug,
+          })
+
+    if (sourceAsset || resultAsset) {
+      storageMeta = {
+        source: sourceAsset || null,
+        result: resultAsset || null,
+      }
+    }
+  } catch (storageError) {
+    console.error('Supabase concept image upload failed:', storageError)
+  }
 
   try {
     conceptRecord = await saveConceptRecord({
@@ -92,7 +124,12 @@ async function persistConceptAndUsage({
       promptSummary: prompt.summary,
       promptCacheKey: prompt.cacheKey,
       imageUrl: result.imageUrl,
-      meta: result.meta,
+      meta: storageMeta
+        ? {
+            ...(result.meta || {}),
+            storage: storageMeta,
+          }
+        : result.meta,
     })
   } catch (persistError) {
     console.error('Supabase concept persistence failed:', persistError)
@@ -177,10 +214,11 @@ export async function POST(request) {
   let companySlug = 'public'
   let leadDestination = null
   let userId = authState.user?.id || null
+  let originalImageBase64 = null
 
   try {
     const body = await request.json()
-    const { imageBase64, provider, optionalNote = '' } = body
+    const { imageBase64, originalImageBase64: sourceImageBase64, provider, optionalNote = '' } = body
     styleId = body.styleId
     modifiers = Array.isArray(body.modifiers) ? body.modifiers : []
     preserveLayout = body.preserveLayout || 'strong'
@@ -195,6 +233,10 @@ export async function POST(request) {
     providerId = provider || getDefaultProviderId()
     const providerConfig = getProvider(providerId)
     sanitizedOptionalNote = sanitizeOptionalNote(optionalNote)
+    originalImageBase64 =
+      typeof sourceImageBase64 === 'string' && sourceImageBase64.startsWith('data:image/')
+        ? sourceImageBase64
+        : imageBase64
 
     if (!auth.enabled) {
       const usage = getUsageSnapshot(sessionId, config)
@@ -301,6 +343,7 @@ export async function POST(request) {
         usage,
         prompt,
         imageQuality,
+        originalImageBase64,
         result: {
           imageUrl: imageBase64,
           isDemo: true,
@@ -352,6 +395,7 @@ export async function POST(request) {
       usage,
       prompt,
       imageQuality,
+      originalImageBase64,
       result: {
         ...result,
         styleId,
