@@ -2,91 +2,64 @@ import MarketingShell from '../../components/MarketingShell'
 import { buildPageMetadata } from '../../lib/siteConfig'
 
 export const metadata = buildPageMetadata({
-  title: 'Pricing',
+  title: 'Customer Pricing',
   description:
-    'Honest pricing for the current landscaping concept MVP, including free homeowner previews, landscaper pilot rollout, and custom branded deployments.',
+    'Simple customer image plans for homeowners, with clear monthly image allowances and a premium, minimal pricing structure.',
   path: '/pricing',
 })
 
-const PLANS = [
+const CUSTOMER_PLANS = [
   {
-    name: 'Homeowner preview',
-    price: 'Free',
+    name: 'Free',
+    allowance: '3 images / month',
     copy:
-      'The live public experience for testing the product and showing homeowners how the preview flow works today.',
-    features: [
-      'Upload a real garden or exterior photo',
-      'Controlled styles, modifiers, and layout preservation',
-      'Up to 3 free generations per session',
-      'Lead continuation after the result',
-    ],
-    note: 'Best for public preview and early homeowner demand testing.',
+      'A light monthly allowance for trying the visual preview flow and exploring one direction for your outdoor space.',
   },
   {
-    name: 'Landscaper pilot',
-    price: 'Custom',
+    name: 'Plus',
+    allowance: '10 images / month',
     copy:
-      'A lean branded pilot for one landscaping company using the current app structure and today’s working feature set.',
-    features: [
-      'One branded company landing page',
-      'Company logo, headline, copy, and theme tokens',
-      'Lead destination metadata and webhook-ready handoff',
-      'Supabase concept, usage, and lead storage',
-    ],
-    note: 'Quoted around setup scope, branding, routing, and rollout support.',
+      'For homeowners comparing multiple styles, materials, or layout directions across a single garden or exterior project.',
   },
   {
-    name: 'Branded rollout',
-    price: 'Custom / from scope',
+    name: 'Pro',
+    allowance: '100 images / month',
     copy:
-      'For agencies or landscaping groups that want a more tailored deployment, multi-brand support, or custom implementation work.',
-    features: [
-      'Additional branded landing pages',
-      'Custom domain and rollout planning',
-      'Lead routing and operational setup',
-      'Future integrations scoped as custom work',
-    ],
-    note: 'Only offered as custom setup work at this stage.',
+      'For heavier concept exploration across larger projects, repeated revisions, or multiple exterior spaces.',
   },
 ]
 
-const COMING_SOON = [
-  'Company configs managed directly from Supabase',
-  'Deeper usage reporting for B2B rollout',
-  'More flexible operational workflows',
+const CUSTOMER_NOTES = [
+  'The current public MVP remains a free preview while customer billing is prepared.',
+  'These tiers describe the intended customer plan structure and monthly image allowances.',
+  'Landscaper rollout pricing is handled separately under the B2B path.',
 ]
 
 export default function PricingPage() {
   return (
     <MarketingShell
-      eyebrow="Pricing"
-      title="Honest pricing for the current stage of the product"
-      description="The public homeowner experience is live now. Branded landscaper pilots and custom rollout work are available by consultation, based on the current feature set and setup scope."
-      primaryCta={{ href: '/contact', label: 'Request a consultation' }}
-      secondaryCta={{ href: '/for-landscapers', label: 'See B2B rollout' }}
+      eyebrow="For homeowners"
+      title="Simple customer image plans"
+      description="This page is for customer image plans only. It keeps the homeowner path separate from branded rollout for landscaping companies."
+      primaryCta={{ href: '/', label: 'Try the free preview' }}
+      secondaryCta={{ href: '/contact', label: 'Ask a question' }}
       panel={
         <>
-          <div className="mk-panel-kicker">No fake tiers</div>
-          <div className="mk-panel-title">Priced around what exists</div>
+          <div className="mk-panel-kicker">Customer pricing</div>
+          <div className="mk-panel-title">Clear monthly image allowances</div>
           <p className="mk-panel-copy">
-            This page only describes the current MVP, branded pilot setup, and custom rollout work. Features that do not exist yet are not sold as live product capability.
+            Premium, simple, and customer-facing. Landscaper rollout is priced separately through the B2B path.
           </p>
         </>
       }
     >
       <section className="mk-section">
         <div className="mk-pricing-grid">
-          {PLANS.map((plan) => (
+          {CUSTOMER_PLANS.map((plan) => (
             <article key={plan.name} className="mk-card mk-price-card">
               <div className="mk-kicker">{plan.name}</div>
-              <div className="mk-price">{plan.price}</div>
+              <div className="mk-price">{plan.allowance}</div>
               <p className="mk-card-copy">{plan.copy}</p>
-              <ul className="mk-list">
-                {plan.features.map((feature) => (
-                  <li key={feature}>{feature}</li>
-                ))}
-              </ul>
-              <p className="mk-note">{plan.note}</p>
             </article>
           ))}
         </div>
@@ -94,22 +67,22 @@ export default function PricingPage() {
 
       <section className="mk-section">
         <div className="mk-grid mk-grid-2">
+          <article className="mk-card mk-card-dark">
+            <div className="mk-kicker">Current status</div>
+            <h2 className="mk-card-title">Free preview live now</h2>
+            <p className="mk-card-copy">
+              The current public product is still positioned as a free preview. The customer plans above define the intended structure for the next stage, without pretending billing is already live.
+            </p>
+          </article>
+
           <article className="mk-card">
-            <div className="mk-kicker">Coming soon</div>
-            <h2 className="mk-card-title">Planned, not sold as live today</h2>
+            <div className="mk-kicker">Notes</div>
+            <h2 className="mk-card-title">Kept separate on purpose</h2>
             <ul className="mk-list">
-              {COMING_SOON.map((item) => (
+              {CUSTOMER_NOTES.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-          </article>
-
-          <article className="mk-card mk-card-dark">
-            <div className="mk-kicker">Best next step</div>
-            <h2 className="mk-card-title">Request a demo or rollout consultation</h2>
-            <p className="mk-card-copy">
-              If you want to test a landscaper pilot, discuss branded rollout options, or scope a custom deployment, the right next step is a short demo conversation rather than a self-serve checkout.
-            </p>
           </article>
         </div>
       </section>

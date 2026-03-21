@@ -2,74 +2,65 @@ import MarketingShell from '../../components/MarketingShell'
 import { buildPageMetadata } from '../../lib/siteConfig'
 
 export const metadata = buildPageMetadata({
-  title: 'For Landscapers',
+  title: 'For Landscaping Companies',
   description:
-    'See how landscaping companies can use branded preview pages, controlled concept generation, and lead capture without a heavy software rollout.',
+    'See how landscaping businesses can use a branded AI visualiser, stronger lead capture, and hosted or embedded rollout options without overbuilding the product.',
   path: '/for-landscapers',
 })
 
-const BENEFITS = [
+const VALUE_CARDS = [
   {
-    title: 'What the tool does today',
+    title: 'Branded AI visualiser',
     body:
-      'Homeowners upload a real property photo, choose a controlled style direction, and receive a faithful landscaping concept preview built for garden, patio, driveway, and exterior improvement conversations.',
+      'Present the current concept flow under your own company brand, with your logo, hero copy, theme colours, and lead destination metadata.',
   },
   {
-    title: 'How branded company pages work',
+    title: 'Lead generation',
     body:
-      'Each company can run a branded route with its own name, logo, hero copy, theme colours, website link, and lead destination metadata, while still using the same single app.',
+      'Turn a static enquiry into a more visual consultation journey, so prospects arrive with a clearer sense of style, layout preference, and project direction.',
   },
   {
-    title: 'Why landscapers use it',
+    title: 'Better enquiry capture',
     body:
-      'It gives prospects a premium first interaction, helps qualify visual intent earlier, and creates a more useful lead handoff than a plain contact form alone.',
+      'The lead handoff includes concept summary, selected style, modifiers, and layout guidance, which is more useful than a plain contact form alone.',
   },
 ]
 
-const WORKFLOW = [
-  'A homeowner lands on a branded company page and uploads a property photo.',
-  'They generate a controlled preview from preset styles, modifiers, and layout-preservation settings.',
-  'When they continue, the lead includes concept metadata so the landscaper sees the chosen direction, layout preference, and result summary.',
+const DELIVERY_OPTIONS = [
+  'Hosted branded page is the default rollout path for speed and simplicity.',
+  'Optional embed can be scoped where it suits the landscaper’s site and workflow.',
+  'Lead routing, webhook handoff, and company metadata can be configured per rollout.',
 ]
 
-const ROLLOUT = [
-  'Single branded pilot page for one landscaping company',
-  'Theme, logo, copy, and lead routing setup',
-  'Supabase-backed lead and concept storage for MVP rollout',
-  'Custom domain, multi-brand rollout, and deeper workflow setup as custom work',
+const BUSINESS_FIT = [
+  'Landscaping companies that want a premium lead magnet',
+  'Design-and-build firms that want better early-stage enquiry quality',
+  'Teams that want a branded experience without building a full software platform',
 ]
 
 export default function ForLandscapersPage() {
   return (
     <MarketingShell
-      eyebrow="B2B rollout"
-      title="A premium visual lead magnet for landscaping companies"
-      description="Use the current concept preview tool as a branded consultation entry point. Keep the homeowner flow simple, keep the experience premium, and capture better-qualified landscaping enquiries."
-      primaryCta={{ href: '/contact', label: 'Request a demo' }}
-      secondaryCta={{ href: '/pricing', label: 'View pricing' }}
+      eyebrow="For landscaping businesses"
+      title="A branded visual enquiry experience for landscaping companies"
+      description="This path is for landscaping businesses, not homeowners. Use the current product as a branded AI visualiser that helps generate leads, improve enquiry quality, and support consultation-led sales conversations."
+      primaryCta={{ href: '/for-landscapers/rollout', label: 'See rollout options' }}
+      secondaryCta={{ href: '/contact', label: 'Request a demo' }}
       panel={
         <>
-          <div className="mk-panel-kicker">Live MVP scope</div>
-          <div className="mk-panel-title">What already exists</div>
+          <div className="mk-panel-kicker">Current B2B value</div>
+          <div className="mk-panel-title">Lean rollout, premium presentation</div>
           <p className="mk-panel-copy">
-            Controlled image generation, branded company routes, Supabase lead capture, lightweight usage tracking, and consultation-ready summaries.
+            The current app already supports branded company routes, lead capture, Supabase-backed storage, and consultation-ready concept summaries.
           </p>
         </>
       }
     >
       <section className="mk-section">
-        <div className="mk-section-head">
-          <div className="mk-kicker">How it fits</div>
-          <h2 className="mk-section-title">Lean enough for pilot rollout, strong enough for sales conversations</h2>
-          <p className="mk-section-copy">
-            This is not a contractor dashboard or a bloated design suite. It is a focused front-end experience for generating visually persuasive landscaping concepts and routing the enquiry cleanly.
-          </p>
-        </div>
-
         <div className="mk-grid mk-grid-3">
-          {BENEFITS.map((item) => (
+          {VALUE_CARDS.map((item) => (
             <article key={item.title} className="mk-card">
-              <h3 className="mk-card-title">{item.title}</h3>
+              <h2 className="mk-card-title">{item.title}</h2>
               <p className="mk-card-copy">{item.body}</p>
             </article>
           ))}
@@ -79,26 +70,23 @@ export default function ForLandscapersPage() {
       <section className="mk-section">
         <div className="mk-grid mk-grid-2">
           <article className="mk-card">
-            <div className="mk-kicker">Lead capture</div>
-            <h2 className="mk-card-title">How the lead handoff works</h2>
+            <div className="mk-kicker">Delivery options</div>
+            <h2 className="mk-card-title">Hosted branded page first, embed if needed</h2>
             <ul className="mk-list">
-              {WORKFLOW.map((step) => (
-                <li key={step}>{step}</li>
+              {DELIVERY_OPTIONS.map((item) => (
+                <li key={item}>{item}</li>
               ))}
             </ul>
           </article>
 
           <article className="mk-card mk-card-dark">
-            <div className="mk-kicker">Custom rollout</div>
-            <h2 className="mk-card-title">Available as setup work</h2>
+            <div className="mk-kicker">Best fit</div>
+            <h2 className="mk-card-title">Who this is built for</h2>
             <ul className="mk-list mk-list-dark">
-              {ROLLOUT.map((item) => (
+              {BUSINESS_FIT.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
-            <p className="mk-note">
-              Custom options are available now as scoped rollout work, not as a self-serve dashboard yet.
-            </p>
           </article>
         </div>
       </section>

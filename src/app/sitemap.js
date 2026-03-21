@@ -2,7 +2,7 @@ import { getCanonicalUrl } from '../lib/siteConfig'
 import { listCompanySlugs } from '../lib/companyConfigs'
 
 export default function sitemap() {
-  const staticRoutes = ['/', '/for-landscapers', '/pricing', '/contact']
+  const staticRoutes = ['/', '/pricing', '/for-landscapers', '/for-landscapers/rollout', '/contact']
 
   return [
     ...staticRoutes.map((path, index) => ({

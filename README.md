@@ -61,6 +61,7 @@ GEMINI_API_KEY=your_key_here
 ANTHROPIC_API_KEY=your_key_here
 LEAD_WEBHOOK_URL=your_webhook_here
 SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_anon_key_here
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
 MAX_FREE_GENERATIONS=3
 GENERATION_COOLDOWN_SECONDS=30
@@ -82,7 +83,12 @@ Gemini is the default live provider and prompt orchestration path. Anthropic sta
 
 Usage control note: the MVP currently tracks free-generation limits, cooldowns, and active locks with an httpOnly session cookie plus lightweight in-memory server state. This is fine for a lean initial deployment, but Redis / Vercel KV / a database session table should replace it for durable cross-instance enforcement.
 
-Supabase note: if `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present, the app will persist:
+Supabase note:
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` are the expected live env vars.
+- The service role key is used server-side only and must never be exposed client-side.
+- If the Supabase env is incomplete, the app logs a clear warning and skips persistence gracefully.
+
+If `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present, the app will persist:
 - leads
 - saved concept metadata
 - lightweight generation usage records
@@ -162,6 +168,7 @@ The easiest way to put this live is **Vercel** — it's free for personal projec
    - `ANTHROPIC_API_KEY` → your key
    - `LEAD_WEBHOOK_URL` → your webhook URL
    - `SUPABASE_URL` → your Supabase project URL
+   - `SUPABASE_ANON_KEY` → your Supabase anon key
    - `SUPABASE_SERVICE_ROLE_KEY` → your Supabase service role key
    - `NEXT_PUBLIC_SITE_URL` → your final domain or Vercel URL
    - `NEXT_PUBLIC_SITE_NAME` → your live brand name

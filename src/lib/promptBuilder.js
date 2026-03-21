@@ -10,11 +10,17 @@ const CORE_SCOPE_FRAGMENT =
 const PRESERVATION_FRAGMENT =
   'Preserve the exact camera angle, lens perspective, house position, garden footprint, fence and wall positions, level changes, and patio, driveway, and lawn structure where possible.'
 
+const VISIBLE_OBJECTS_FRAGMENT =
+  'Preserve all visible objects exactly as shown, including umbrellas, furniture, planters, bins, ornaments, and accessories. Keep their position, scale, orientation, styling, and open or closed state unchanged unless explicitly requested.'
+
 const QUALITY_FRAGMENT =
   'Believable premium after-version suitable for a landscaping quote, homeowner preview, or lead-generation tool.'
 
 const NEGATIVE_FRAGMENT =
-  'Do not invent new fences, move boundaries, alter major built structures unless requested, create impossible geometry, or turn the image into fantasy concept art.'
+  'Do not invent new fences, move boundaries, alter major built structures unless requested, create impossible geometry, turn the image into fantasy concept art, or add, remove, move, open, close, or restyle visible objects.'
+
+const MODIFIER_SCOPE_FRAGMENT =
+  'Modifiers affect landscaping style, planting, material finish, patio emphasis, and maintenance character only. They do not permit visible object changes.'
 
 const PRESERVE_LAYOUT_FRAGMENTS = {
   strong:
@@ -135,7 +141,7 @@ export function sanitizeOptionalNote(optionalNote = '') {
 
 function buildOptionalNoteFragment(optionalNote) {
   return optionalNote
-    ? `Small preference only if compatible with the existing layout: ${optionalNote}. Do not treat this as permission for structural redesign.`
+    ? `Small preference only if compatible with the existing layout: ${optionalNote}. Do not treat this as permission for structural redesign or visible object changes.`
     : ''
 }
 
@@ -170,9 +176,11 @@ export function buildPrompt(
   const positive = [
     CORE_SCOPE_FRAGMENT,
     PRESERVATION_FRAGMENT,
+    VISIBLE_OBJECTS_FRAGMENT,
     PRESERVE_LAYOUT_FRAGMENTS[normalisedPreserveLayout],
     `Apply ${STYLE_LABELS[normalisedStyleId] || 'selected'} style through materials, planting character, edges, hardscape finish, and atmosphere.`,
     getStyleFragment(normalisedStyleId),
+    MODIFIER_SCOPE_FRAGMENT,
     modifierFragment,
     optionalNoteFragment,
     QUALITY_FRAGMENT,

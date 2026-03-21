@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { CLIENT_APP_CONFIG, getResizeSettings } from '../lib/appConfig'
 import { OPTIONAL_NOTE_MAX_LENGTH, sanitizeOptionalNote } from '../lib/promptBuilder'
@@ -761,6 +762,29 @@ export default function App({ experienceConfig } = {}) {
                 <div className="gv-trust-label">{item.label}</div>
               </div>
             ))}
+          </div>
+
+          <div className="gv-audience-wrap">
+            <div className="gv-section-label center">Choose your path</div>
+            <div className="gv-audience-grid">
+              <Link href="/pricing" className="gv-audience-card">
+                <div className="gv-audience-kicker">For homeowners</div>
+                <div className="gv-audience-title">Customer image plans</div>
+                <p className="gv-audience-copy">
+                  Start with the free preview and see the simple customer plan structure for ongoing image generation.
+                </p>
+                <span className="gv-audience-link">View customer plans →</span>
+              </Link>
+
+              <Link href="/for-landscapers" className="gv-audience-card gv-audience-card-dark">
+                <div className="gv-audience-kicker">For landscaping companies</div>
+                <div className="gv-audience-title">Branded rollout</div>
+                <p className="gv-audience-copy">
+                  Use a branded AI visualiser, stronger lead capture, and consultation-led rollout options for your business.
+                </p>
+                <span className="gv-audience-link">Explore the landscaper path →</span>
+              </Link>
+            </div>
           </div>
 
           <div className="gv-style-strip-wrap">

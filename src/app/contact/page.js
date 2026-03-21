@@ -4,58 +4,58 @@ import { SITE_CONFIG, buildPageMetadata } from '../../lib/siteConfig'
 export const metadata = buildPageMetadata({
   title: 'Contact',
   description:
-    'Request a demo, discuss a landscaper pilot, or scope a branded rollout for the landscaping concept preview tool.',
+    'Get in touch about customer plans, branded landscaper rollout, or a custom consultation for the landscaping visual preview product.',
   path: '/contact',
 })
 
-const REQUEST_POINTS = [
-  'Your company name and website',
-  'Whether you want a pilot page or a broader branded rollout',
-  'Where leads should be sent',
-  'Any deadline, campaign, or rollout timing',
+const CONTACT_PATHS = [
+  {
+    title: 'Homeowners',
+    body:
+      'Use this route if you want to ask about the customer image plans or the current free preview experience.',
+  },
+  {
+    title: 'Landscaping companies',
+    body:
+      'Use this route if you want to discuss a branded AI visualiser, better enquiry capture, or a hosted company page.',
+  },
+  {
+    title: 'Custom rollout',
+    body:
+      'Use this route if you need embed scoping, multi-brand setup, or a broader consultation-led deployment.',
+  },
 ]
 
-const USE_CASES = [
-  {
-    title: 'Request a demo',
-    body:
-      'Best if you want to see the current homeowner flow, branded company routes, and lead capture process before deciding on rollout scope.',
-  },
-  {
-    title: 'Discuss a pilot',
-    body:
-      'Best if you want one branded landing page for a landscaping company and need a lean launch plan rather than a full platform commitment.',
-  },
-  {
-    title: 'Scope custom rollout',
-    body:
-      'Best if you want multi-brand support, custom routing, or a more tailored deployment built on top of the current app foundation.',
-  },
+const REQUEST_POINTS = [
+  'Which path you are interested in: homeowner plans or landscaper rollout',
+  'Your company name and website if this is a B2B enquiry',
+  'Any preferred timing or campaign deadline',
+  'Where you would want leads or enquiries to go',
 ]
 
 export default function ContactPage() {
-  const mailtoHref = `mailto:${SITE_CONFIG.contactEmail}?subject=${encodeURIComponent('Demo / rollout enquiry')}`
+  const mailtoHref = `mailto:${SITE_CONFIG.contactEmail}?subject=${encodeURIComponent('GardenVision enquiry')}`
 
   return (
     <MarketingShell
       eyebrow="Contact"
-      title="Request a demo or rollout conversation"
-      description="Use this page to start a pilot discussion, ask about branded company landing pages, or scope a custom rollout for your landscaping business."
+      title="Talk through plans, rollout, or the next step"
+      description="This page supports both audience paths. Use it for customer plan questions, landscaper demos, or custom rollout conversations."
       primaryCta={{ href: mailtoHref, label: `Email ${SITE_CONFIG.contactEmail}` }}
-      secondaryCta={{ href: '/pricing', label: 'View pricing' }}
+      secondaryCta={{ href: '/', label: 'Try the preview' }}
       panel={
         <>
-          <div className="mk-panel-kicker">Simple next step</div>
-          <div className="mk-panel-title">No heavy sales flow</div>
+          <div className="mk-panel-kicker">Lean by design</div>
+          <div className="mk-panel-title">Simple contact, not a heavy sales funnel</div>
           <p className="mk-panel-copy">
-            A short demo or rollout conversation is the right fit at this stage. The product is ready for pilot discussions, not a complex enterprise procurement flow.
+            Email is the cleanest route for this stage. It keeps customer questions and B2B rollout discussions clear without adding extra account or CRM complexity.
           </p>
         </>
       }
     >
       <section className="mk-section">
         <div className="mk-grid mk-grid-3">
-          {USE_CASES.map((item) => (
+          {CONTACT_PATHS.map((item) => (
             <article key={item.title} className="mk-card">
               <h2 className="mk-card-title">{item.title}</h2>
               <p className="mk-card-copy">{item.body}</p>
@@ -67,8 +67,8 @@ export default function ContactPage() {
       <section className="mk-section">
         <div className="mk-grid mk-grid-2">
           <article className="mk-card">
-            <div className="mk-kicker">What to send</div>
-            <h2 className="mk-card-title">Helpful context for a fast reply</h2>
+            <div className="mk-kicker">Helpful context</div>
+            <h2 className="mk-card-title">What to include</h2>
             <ul className="mk-list">
               {REQUEST_POINTS.map((item) => (
                 <li key={item}>{item}</li>
@@ -77,10 +77,10 @@ export default function ContactPage() {
           </article>
 
           <article className="mk-card mk-card-dark">
-            <div className="mk-kicker">Direct contact</div>
+            <div className="mk-kicker">Direct email</div>
             <h2 className="mk-card-title">{SITE_CONFIG.contactEmail}</h2>
             <p className="mk-card-copy">
-              Email is the leanest contact route for this stage of the product. It keeps demo requests, pilot setup, and custom rollout discussions simple without adding a separate dashboard or CRM layer.
+              Best for customer plan questions, branded landscaper demos, and custom rollout discussions.
             </p>
           </article>
         </div>

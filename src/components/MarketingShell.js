@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { SITE_CONFIG } from '../lib/siteConfig'
 
 const NAV_ITEMS = [
+  { href: '/pricing', label: 'Customer Plans' },
   { href: '/for-landscapers', label: 'For Landscapers' },
-  { href: '/pricing', label: 'Pricing' },
   { href: '/contact', label: 'Contact' },
 ]
 

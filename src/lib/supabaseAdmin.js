@@ -9,19 +9,41 @@ function trimText(value, maxLength) {
     : normalised
 }
 
+let hasWarnedAboutSupabaseConfig = false
+
 function getSupabaseConfig() {
-  const url = String(
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-  )
+  const url = String(process.env.SUPABASE_URL || '')
     .trim()
     .replace(/\/$/, '')
+  const anonKey = String(process.env.SUPABASE_ANON_KEY || '').trim()
   const serviceRoleKey = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()
+  const missingKeys = [
+    !url ? 'SUPABASE_URL' : null,
+    !anonKey ? 'SUPABASE_ANON_KEY' : null,
+    !serviceRoleKey ? 'SUPABASE_SERVICE_ROLE_KEY' : null,
+  ].filter(Boolean)
 
   return {
     url,
+    anonKey,
     serviceRoleKey,
-    isConfigured: Boolean(url && serviceRoleKey),
+    missingKeys,
+    hasServerPersistence: Boolean(url && serviceRoleKey),
+    isConfigured: Boolean(url && anonKey && serviceRoleKey),
   }
+}
+
+function warnAboutSupabaseConfig(config) {
+  if (hasWarnedAboutSupabaseConfig || config.missingKeys.length === 0) {
+    return
+  }
+
+  hasWarnedAboutSupabaseConfig = true
+  console.warn(
+    `[supabase] Live config is incomplete. Missing env vars: ${config.missingKeys.join(', ')}. ` +
+      'Expected env vars: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY. ' +
+      'Server persistence will fail gracefully until the required values are set.'
+  )
 }
 
 function buildRestUrl(baseUrl, table, select = '*') {
@@ -32,9 +54,12 @@ function buildRestUrl(baseUrl, table, select = '*') {
 async function insertRow(table, payload, { select = '*' } = {}) {
   const config = getSupabaseConfig()
 
-  if (!config.isConfigured) {
+  if (!config.hasServerPersistence) {
+    warnAboutSupabaseConfig(config)
     return null
   }
+
+  warnAboutSupabaseConfig(config)
 
   const response = await fetch(buildRestUrl(config.url, table, select), {
     method: 'POST',
@@ -58,7 +83,9 @@ async function insertRow(table, payload, { select = '*' } = {}) {
 }
 
 export function isSupabaseConfigured() {
-  return getSupabaseConfig().isConfigured
+  const config = getSupabaseConfig()
+  warnAboutSupabaseConfig(config)
+  return config.isConfigured
 }
 
 export async function saveConceptRecord({
