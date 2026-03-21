@@ -46,9 +46,15 @@ function warnAboutSupabaseConfig(config) {
   )
 }
 
-function buildRestUrl(baseUrl, table, select = '*') {
-  const params = new URLSearchParams({ select })
-  return `${baseUrl}/rest/v1/${table}?${params.toString()}`
+function buildRestUrl(baseUrl, table, params = {}) {
+  const searchParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value == null || value === '') return
+    searchParams.set(key, String(value))
+  })
+
+  return `${baseUrl}/rest/v1/${table}?${searchParams.toString()}`
 }
 
 async function insertRow(table, payload, { select = '*' } = {}) {
@@ -61,7 +67,7 @@ async function insertRow(table, payload, { select = '*' } = {}) {
 
   warnAboutSupabaseConfig(config)
 
-  const response = await fetch(buildRestUrl(config.url, table, select), {
+  const response = await fetch(buildRestUrl(config.url, table, { select }), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -82,6 +88,49 @@ async function insertRow(table, payload, { select = '*' } = {}) {
   return Array.isArray(rows) ? rows[0] || null : rows
 }
 
+async function fetchRows(table, { select = '*', filters = {}, order, limit } = {}) {
+  const config = getSupabaseConfig()
+
+  if (!config.hasServerPersistence) {
+    warnAboutSupabaseConfig(config)
+    return []
+  }
+
+  warnAboutSupabaseConfig(config)
+
+  const query = { select }
+
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value == null || value === '') return
+    query[key] = value
+  })
+
+  if (order) {
+    query.order = order
+  }
+
+  if (typeof limit === 'number' && limit > 0) {
+    query.limit = limit
+  }
+
+  const response = await fetch(buildRestUrl(config.url, table, query), {
+    method: 'GET',
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+    },
+    cache: 'no-store',
+  })
+
+  if (!response.ok) {
+    const detail = await response.text()
+    throw new Error(`Supabase ${table} read failed: ${detail || response.statusText}`)
+  }
+
+  const rows = await response.json()
+  return Array.isArray(rows) ? rows : []
+}
+
 export function isSupabaseConfigured() {
   const config = getSupabaseConfig()
   warnAboutSupabaseConfig(config)
@@ -90,6 +139,7 @@ export function isSupabaseConfigured() {
 
 export async function saveConceptRecord({
   sessionId,
+  userId,
   companySlug,
   leadDestination,
   provider,
@@ -109,6 +159,7 @@ export async function saveConceptRecord({
     'saved_concepts',
     {
       session_id: trimText(sessionId, 120),
+      user_id: trimText(userId, 120),
       company_slug: trimText(companySlug, 120),
       lead_destination:
         leadDestination && typeof leadDestination === 'object'
@@ -137,6 +188,7 @@ export async function saveConceptRecord({
 
 export async function saveUsageRecord({
   sessionId,
+  userId,
   conceptId,
   companySlug,
   eventType,
@@ -156,6 +208,7 @@ export async function saveUsageRecord({
     'usage_records',
     {
       session_id: trimText(sessionId, 120),
+      user_id: trimText(userId, 120),
       concept_id: trimText(conceptId, 120),
       company_slug: trimText(companySlug, 120),
       event_type: trimText(eventType, 40),
@@ -215,4 +268,37 @@ export async function saveLeadRecord({
     },
     { select: 'id,created_at' }
   )
+}
+
+export async function listConceptsForUser(userId, { limit = 24 } = {}) {
+  const normalisedUserId = trimText(userId, 120)
+
+  if (!normalisedUserId) {
+    return []
+  }
+
+  return fetchRows('saved_concepts', {
+    select: [
+      'id',
+      'created_at',
+      'company_slug',
+      'style_id',
+      'style_label',
+      'modifiers',
+      'preserve_layout',
+      'optional_note',
+      'prompt_summary',
+      'result_image_url',
+      'result_image_inline',
+      'mode',
+      'quality',
+      'provider',
+      'meta',
+    ].join(','),
+    filters: {
+      user_id: `eq.${normalisedUserId}`,
+    },
+    order: 'created_at.desc',
+    limit,
+  })
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import {
   buildPublicAppConfig,
   getServerAppConfig,
@@ -22,6 +23,7 @@ import {
   saveConceptRecord,
   saveUsageRecord,
 } from '../../../lib/supabaseAdmin'
+import { getSupabaseAuthState } from '../../../lib/supabaseAuth'
 
 function buildResponse(payload, { status = 200, sessionContext } = {}) {
   const response = NextResponse.json(payload, { status })
@@ -51,8 +53,17 @@ function getStyleLabel(promptSummary) {
   return String(promptSummary || '').split(' · ')[0] || null
 }
 
+function buildAuthPayload(authState) {
+  return {
+    enabled: Boolean(authState?.enabled),
+    signedIn: Boolean(authState?.user),
+    email: authState?.user?.email || null,
+  }
+}
+
 async function persistConceptAndUsage({
   sessionId,
+  userId,
   companySlug,
   leadDestination,
   providerId,
@@ -67,6 +78,7 @@ async function persistConceptAndUsage({
   try {
     conceptRecord = await saveConceptRecord({
       sessionId,
+      userId,
       companySlug,
       leadDestination,
       provider: providerId,
@@ -89,6 +101,7 @@ async function persistConceptAndUsage({
   try {
     await saveUsageRecord({
       sessionId,
+      userId,
       conceptId: conceptRecord?.id || null,
       companySlug,
       eventType: 'generation',
@@ -113,6 +126,7 @@ async function persistConceptAndUsage({
 
 async function persistUsageFailure({
   sessionId,
+  userId,
   companySlug,
   providerId,
   styleId,
@@ -126,6 +140,7 @@ async function persistUsageFailure({
   try {
     await saveUsageRecord({
       sessionId,
+      userId,
       conceptId: null,
       companySlug,
       eventType: 'generation',
@@ -150,6 +165,8 @@ export async function POST(request) {
   const config = getServerAppConfig()
   const publicConfig = buildPublicAppConfig(config)
   const sessionContext = getSessionContext(request)
+  const authState = await getSupabaseAuthState(cookies())
+  const auth = buildAuthPayload(authState)
   const { sessionId } = sessionContext
   let lockAcquired = false
   let providerId = null
@@ -159,6 +176,7 @@ export async function POST(request) {
   let sanitizedOptionalNote = ''
   let companySlug = 'public'
   let leadDestination = null
+  let userId = authState.user?.id || null
 
   try {
     const body = await request.json()
@@ -178,12 +196,75 @@ export async function POST(request) {
     const providerConfig = getProvider(providerId)
     sanitizedOptionalNote = sanitizeOptionalNote(optionalNote)
 
+    if (!auth.enabled) {
+      const usage = getUsageSnapshot(sessionId, config)
+
+      await persistUsageFailure({
+        sessionId,
+        userId: null,
+        companySlug,
+        providerId,
+        styleId,
+        modifiers,
+        preserveLayout,
+        optionalNote: sanitizedOptionalNote,
+        usage,
+        error: {
+          code: 'AUTH_UNAVAILABLE',
+        },
+        status: 'blocked',
+      })
+
+      return buildResponse(
+        {
+          error: 'Account access is not configured yet. Please try again later.',
+          code: 'AUTH_UNAVAILABLE',
+          usage,
+          config: publicConfig,
+          auth,
+        },
+        { status: 503, sessionContext }
+      )
+    }
+
+    if (!authState.user) {
+      const usage = getUsageSnapshot(sessionId, config)
+
+      await persistUsageFailure({
+        sessionId,
+        userId: null,
+        companySlug,
+        providerId,
+        styleId,
+        modifiers,
+        preserveLayout,
+        optionalNote: sanitizedOptionalNote,
+        usage,
+        error: {
+          code: 'AUTH_REQUIRED',
+        },
+        status: 'blocked',
+      })
+
+      return buildResponse(
+        {
+          error: 'Please sign in to create free landscaping concepts.',
+          code: 'AUTH_REQUIRED',
+          usage,
+          config: publicConfig,
+          auth,
+        },
+        { status: 401, sessionContext }
+      )
+    }
+
     if (!imageBase64) {
       return buildResponse(
         {
           error: 'Missing imageBase64',
           usage: getUsageSnapshot(sessionId, config),
           config: publicConfig,
+          auth,
         },
         { status: 400, sessionContext }
       )
@@ -195,6 +276,7 @@ export async function POST(request) {
           error: `Unknown provider: ${providerId}`,
           usage: getUsageSnapshot(sessionId, config),
           config: publicConfig,
+          auth,
         },
         { status: 400, sessionContext }
       )
@@ -211,6 +293,7 @@ export async function POST(request) {
       const usage = completeGeneration(sessionId, config)
       const conceptRecord = await persistConceptAndUsage({
         sessionId,
+        userId,
         companySlug,
         leadDestination,
         providerId,
@@ -240,6 +323,7 @@ export async function POST(request) {
           prompt: promptPayload,
           usage,
           config: publicConfig,
+          auth,
           meta: {
             provider: providerConfig.id,
             mode: 'demo',
@@ -260,6 +344,7 @@ export async function POST(request) {
     const usage = completeGeneration(sessionId, config)
     const conceptRecord = await persistConceptAndUsage({
       sessionId,
+      userId,
       companySlug,
       leadDestination,
       providerId,
@@ -282,6 +367,7 @@ export async function POST(request) {
         prompt: promptPayload,
         usage,
         config: publicConfig,
+        auth,
       },
       { sessionContext }
     )
@@ -294,6 +380,7 @@ export async function POST(request) {
 
     await persistUsageFailure({
       sessionId,
+      userId,
       companySlug,
       providerId,
       styleId,
@@ -311,6 +398,7 @@ export async function POST(request) {
         code: error.code || 'GENERATION_ERROR',
         usage: error.usage || usage,
         config: publicConfig,
+        auth,
       },
       {
         status: error.status || 500,
@@ -324,11 +412,13 @@ export async function GET(request) {
   const config = getServerAppConfig()
   const publicConfig = buildPublicAppConfig(config)
   const sessionContext = getSessionContext(request)
+  const authState = await getSupabaseAuthState(cookies())
 
   return buildResponse(
     {
       usage: getUsageSnapshot(sessionContext.sessionId, config),
       config: publicConfig,
+      auth: buildAuthPayload(authState),
     },
     { sessionContext }
   )

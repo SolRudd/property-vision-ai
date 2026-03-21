@@ -1,4 +1,4 @@
-import { SITE_CONFIG, getCanonicalUrl } from './siteConfig'
+import { SITE_CONFIG, buildPageMetadata } from './siteConfig'
 
 // Lean MVP config source for partner/company landing pages.
 // This can move to Supabase later without changing the route shape.
@@ -146,16 +146,9 @@ export function buildCompanyMetadata(config) {
   const title = `${resolved.companyName} | Landscaping Visualisations`
   const description = resolved.heroSubtext
 
-  return {
+  return buildPageMetadata({
     title,
     description,
-    alternates: {
-      canonical: getCanonicalUrl(`/${resolved.slug}`),
-    },
-    openGraph: {
-      title,
-      description,
-      url: getCanonicalUrl(`/${resolved.slug}`),
-    },
-  }
+    path: `/${resolved.slug}`,
+  })
 }

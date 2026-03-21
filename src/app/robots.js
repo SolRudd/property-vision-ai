@@ -1,4 +1,4 @@
-import { getCanonicalUrl } from '../lib/siteConfig'
+import { SITE_CONFIG, getCanonicalUrl } from '../lib/siteConfig'
 
 export default function robots() {
   return {
@@ -6,9 +6,10 @@ export default function robots() {
       {
         userAgent: '*',
         allow: '/',
-        disallow: ['/api/'],
+        disallow: ['/api/', '/auth', '/gallery'],
       },
     ],
+    host: SITE_CONFIG.url,
     sitemap: getCanonicalUrl('/sitemap.xml'),
   }
 }

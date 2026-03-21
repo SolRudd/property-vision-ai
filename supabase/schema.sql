@@ -4,6 +4,7 @@ create table if not exists public.saved_concepts (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   session_id text not null,
+  user_id uuid references auth.users(id) on delete set null,
   company_slug text,
   lead_destination jsonb not null default '{}'::jsonb,
   provider text,
@@ -25,6 +26,7 @@ create table if not exists public.usage_records (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
   session_id text not null,
+  user_id uuid references auth.users(id) on delete set null,
   concept_id uuid references public.saved_concepts(id) on delete set null,
   company_slug text,
   event_type text not null default 'generation',
@@ -63,11 +65,17 @@ create index if not exists saved_concepts_created_at_idx
 create index if not exists saved_concepts_session_id_idx
   on public.saved_concepts (session_id);
 
+create index if not exists saved_concepts_user_id_idx
+  on public.saved_concepts (user_id);
+
 create index if not exists usage_records_created_at_idx
   on public.usage_records (created_at desc);
 
 create index if not exists usage_records_session_id_idx
   on public.usage_records (session_id);
+
+create index if not exists usage_records_user_id_idx
+  on public.usage_records (user_id);
 
 create index if not exists leads_created_at_idx
   on public.leads (created_at desc);

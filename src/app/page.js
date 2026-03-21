@@ -244,6 +244,15 @@ function createInitialUsageState(config) {
   }
 }
 
+function createInitialAuthState() {
+  return {
+    ready: false,
+    enabled: false,
+    signedIn: false,
+    email: null,
+  }
+}
+
 function normaliseStep(step, uploadedImage, selectedStyle, result) {
   if (step === 'lead' && result) return 'lead'
   if (step === 'result' && result) return 'result'
@@ -276,6 +285,8 @@ export default function App({ experienceConfig } = {}) {
   const resolvedConfig = resolveExperienceConfig(
     experienceConfig || getPublicExperienceConfig()
   )
+  const landingPath = resolvedConfig.slug === 'public' ? '/' : `/${resolvedConfig.slug}`
+  const authHref = `/auth?next=${encodeURIComponent(landingPath)}`
   const landingKey = resolvedConfig.slug || 'public'
   const journeyMetaKey = buildJourneyMetaKey(landingKey)
   const journeyAssetKey = buildJourneyAssetKey(landingKey)
@@ -297,6 +308,7 @@ export default function App({ experienceConfig } = {}) {
   const [leadSubmitted, setLeadSubmitted] = useState(false)
   const [leadLoading, setLeadLoading] = useState(false)
   const [sessionUsage, setSessionUsage] = useState(createInitialUsageState(CLIENT_APP_CONFIG))
+  const [authState, setAuthState] = useState(createInitialAuthState())
   const [lead, setLead] = useState(EMPTY_LEAD)
 
   const fileRef = useRef(null)
@@ -305,6 +317,9 @@ export default function App({ experienceConfig } = {}) {
 
   const remaining = sessionUsage.remainingGenerations
   const isGenerating = step === 'generating'
+  const authRequiredForGeneration =
+    authState.ready && authState.enabled && !authState.signedIn
+  const authUnavailable = authState.ready && !authState.enabled
 
   useEffect(() => {
     if (!sessionUsage.cooldownEndsAt) return undefined
@@ -345,8 +360,22 @@ export default function App({ experienceConfig } = {}) {
         if (ignore) return
         if (data.config) setRuntimeConfig(data.config)
         if (data.usage) setSessionUsage(data.usage)
+        if (data.auth) {
+          setAuthState({
+            ready: true,
+            enabled: Boolean(data.auth.enabled),
+            signedIn: Boolean(data.auth.signedIn),
+            email: data.auth.email || null,
+          })
+        } else {
+          setAuthState((prev) => ({ ...prev, ready: true }))
+        }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!ignore) {
+          setAuthState((prev) => ({ ...prev, ready: true }))
+        }
+      })
 
     return () => {
       ignore = true
@@ -491,6 +520,10 @@ export default function App({ experienceConfig } = {}) {
     fileRef.current?.click()
   }, [])
 
+  const redirectToAuth = useCallback(() => {
+    window.location.href = authHref
+  }, [authHref])
+
   const onDrop = useCallback((event) => {
     event.preventDefault()
     setDragging(false)
@@ -504,6 +537,15 @@ export default function App({ experienceConfig } = {}) {
     nextOptionalNote = optionalNote,
   } = {}) => {
     if (!nextStyle || !resizedImage) return
+    if (!authState.ready) return
+    if (authUnavailable) {
+      setGenError('Account access is not configured yet. Please try again later.')
+      return
+    }
+    if (authRequiredForGeneration) {
+      redirectToAuth()
+      return
+    }
     if (remaining <= 0) {
       setStep('lead')
       return
@@ -561,6 +603,18 @@ export default function App({ experienceConfig } = {}) {
       window.clearInterval(stageTimer)
       if (error.config) setRuntimeConfig(error.config)
       if (error.usage) setSessionUsage(error.usage)
+      if (error.code === 'AUTH_REQUIRED') {
+        redirectToAuth()
+        return
+      }
+      if (error.code === 'AUTH_UNAVAILABLE') {
+        setAuthState({
+          ready: true,
+          enabled: false,
+          signedIn: false,
+          email: null,
+        })
+      }
       setGenError(error.message || 'Something went wrong. Please try again.')
       setStep('style')
     }
@@ -676,6 +730,31 @@ export default function App({ experienceConfig } = {}) {
           )}
         </div>
         <div className="gv-header-actions">
+          {authState.ready && authState.enabled && authState.signedIn ? (
+            <>
+              <Link href="/gallery" className="gv-header-link">
+                My gallery
+              </Link>
+              <span className="gv-badge-dark">Signed in</span>
+              <form action="/auth/logout" method="post" className="gv-header-form">
+                <input type="hidden" name="next" value={landingPath} />
+                <button type="submit" className="gv-header-reset">
+                  Log out
+                </button>
+              </form>
+            </>
+          ) : authState.ready && authState.enabled ? (
+            <>
+              <Link href={authHref} className="gv-header-link">
+                Sign in
+              </Link>
+              <span className="gv-badge-dark">Account required</span>
+            </>
+          ) : authState.ready ? (
+            <span className="gv-badge-dark">Account setup pending</span>
+          ) : (
+            <span className="gv-badge-dark">Checking account…</span>
+          )}
           {hasJourneyState && (
             <button
               type="button"
@@ -914,6 +993,23 @@ export default function App({ experienceConfig } = {}) {
             <span className="gv-usage-count">{remaining} of {sessionUsage.maxFreeGenerations}</span>
           </div>
 
+          {authRequiredForGeneration && (
+            <div className="gv-auth-panel">
+              <div>
+                Create a free account to use your saved concept allowance and keep your previews linked to you.
+              </div>
+              <Link href={authHref} className="gv-text-btn">
+                Sign in or create account →
+              </Link>
+            </div>
+          )}
+
+          {authUnavailable && (
+            <div className="gv-auth-panel gv-auth-panel-muted">
+              Account access is not configured yet. Generation is temporarily unavailable.
+            </div>
+          )}
+
           {sessionUsage.cooldownRemainingSeconds > 0 && (
             <div className="gv-cooldown-note">
               Next generation available in {sessionUsage.cooldownRemainingSeconds}s
@@ -1016,20 +1112,44 @@ export default function App({ experienceConfig } = {}) {
             <button
               type="button"
               className="gv-cta"
-              disabled={!selectedStyle || sessionUsage.cooldownRemainingSeconds > 0 || isGenerating || sessionUsage.activeGeneration}
-              onClick={() => runGeneration()}
+              disabled={
+                !selectedStyle ||
+                !authState.ready ||
+                authUnavailable ||
+                sessionUsage.cooldownRemainingSeconds > 0 ||
+                isGenerating ||
+                sessionUsage.activeGeneration
+              }
+              onClick={() => {
+                if (authRequiredForGeneration) {
+                  redirectToAuth()
+                  return
+                }
+
+                runGeneration()
+              }}
             >
-              {remaining <= 0
-                ? 'Upgrade to generate →'
-                : sessionUsage.cooldownRemainingSeconds > 0
-                  ? `Cooldown ${sessionUsage.cooldownRemainingSeconds}s`
-                  : 'Create my design preview →'}
+              {!authState.ready
+                ? 'Checking account…'
+                : authRequiredForGeneration
+                  ? 'Create free account to continue →'
+                  : remaining <= 0
+                    ? 'Upgrade to generate →'
+                    : sessionUsage.cooldownRemainingSeconds > 0
+                      ? `Cooldown ${sessionUsage.cooldownRemainingSeconds}s`
+                      : 'Create my design preview →'}
             </button>
-            {!selectedStyle || sessionUsage.activeGeneration ? (
+            {!selectedStyle || sessionUsage.activeGeneration || authUnavailable ? (
               <span className="gv-cta-hint">
                 {!selectedStyle
                   ? 'Select a style above to continue'
-                  : 'One generation can run at a time per session'}
+                  : authUnavailable
+                    ? 'Supabase Auth must be configured before generation can be used'
+                    : 'One generation can run at a time per session'}
+              </span>
+            ) : authRequiredForGeneration ? (
+              <span className="gv-cta-hint">
+                Sign in first. Your cooldown and session protections stay in place after that.
               </span>
             ) : sessionUsage.cooldownRemainingSeconds > 0 ? (
               <span className="gv-cta-hint">Server cooldown is active between free generations</span>

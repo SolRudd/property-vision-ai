@@ -27,25 +27,47 @@ export const SITE_CONFIG = {
     process.env.NEXT_PUBLIC_LEAD_FORM_HEADING || 'Request a landscaping quote',
   leadFormCTA:
     process.env.NEXT_PUBLIC_LEAD_FORM_CTA || 'Continue with this design',
-  ogImagePath: '/opengraph-image',
+  ogImagePath: process.env.NEXT_PUBLIC_OG_IMAGE_PATH || '/opengraph-image',
+  locale: 'en_GB',
 }
 
 export function getCanonicalUrl(path = '/') {
   return new URL(path, `${SITE_CONFIG.url}/`).toString()
 }
 
+function getDefaultOgImage() {
+  return {
+    url: SITE_CONFIG.ogImagePath,
+    width: 1200,
+    height: 630,
+    alt: `${SITE_CONFIG.name} preview`,
+  }
+}
+
 export function buildPageMetadata({ title, description, path }) {
+  const canonicalUrl = getCanonicalUrl(path)
+  const openGraphTitle = `${title} | ${SITE_CONFIG.name}`
+
   return {
     title,
     description,
     alternates: {
-      canonical: getCanonicalUrl(path),
+      canonical: canonicalUrl,
     },
     openGraph: {
-      title: `${title} | ${SITE_CONFIG.name}`,
+      type: 'website',
+      locale: SITE_CONFIG.locale,
+      title: openGraphTitle,
       description,
-      url: getCanonicalUrl(path),
+      url: canonicalUrl,
       siteName: SITE_CONFIG.name,
+      images: [getDefaultOgImage()],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: openGraphTitle,
+      description,
+      images: [SITE_CONFIG.ogImagePath],
     },
   }
 }
@@ -59,24 +81,30 @@ export function getSiteMetadata() {
       default: defaultTitle,
       template: `%s | ${SITE_CONFIG.name}`,
     },
+    applicationName: SITE_CONFIG.shortName,
     description: SITE_CONFIG.description,
     alternates: {
       canonical: '/',
     },
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        'max-image-preview': 'large',
+        'max-snippet': -1,
+        'max-video-preview': -1,
+      },
+    },
     openGraph: {
       type: 'website',
+      locale: SITE_CONFIG.locale,
       url: SITE_CONFIG.url,
       title: defaultTitle,
       description: SITE_CONFIG.description,
       siteName: SITE_CONFIG.name,
-      images: [
-        {
-          url: SITE_CONFIG.ogImagePath,
-          width: 1200,
-          height: 630,
-          alt: `${SITE_CONFIG.name} preview`,
-        },
-      ],
+      images: [getDefaultOgImage()],
     },
     twitter: {
       card: 'summary_large_image',
