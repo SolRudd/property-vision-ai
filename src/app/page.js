@@ -280,7 +280,6 @@ async function normaliseUploadPreview(file) {
 }
 
 async function callGenerateAPI(
-  originalImageBase64,
   imageBase64,
   styleId,
   modifiers,
@@ -293,7 +292,6 @@ async function callGenerateAPI(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      originalImageBase64,
       imageBase64,
       styleId,
       modifiers,
@@ -656,11 +654,10 @@ export default function App({ experienceConfig } = {}) {
     }, 900)
 
     try {
-      // The working image is the cost-controlled generation asset. The preview
-      // image remains the original upload for the client-side journey UI.
+      // Send only the resized working image to keep the request body lean.
+      // The original-looking preview stays client-side for the UI only.
       const sanitizedOptionalNote = sanitizeOptionalNote(nextOptionalNote)
       const data = await callGenerateAPI(
-        uploadedImage || resizedImage,
         resizedImage,
         nextStyle,
         modifiers,
