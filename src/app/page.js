@@ -139,10 +139,6 @@ function normaliseCompareTab(value) {
   return typeof value === 'string' && COMPARE_TABS.has(value) ? value : 'after'
 }
 
-function normaliseStoredImage(value) {
-  return typeof value === 'string' && value.startsWith('data:image/') ? value : null
-}
-
 function normaliseStoredResult(value) {
   if (!isRecord(value)) return null
 
@@ -180,6 +176,16 @@ function normaliseStoredResult(value) {
     meta: isRecord(value.meta) ? value.meta : {},
     conceptId: typeof value.conceptId === 'string' ? value.conceptId : null,
   }
+}
+
+function isQuotaExceededError(error) {
+  return (
+    error instanceof DOMException &&
+    (error.name === 'QuotaExceededError' ||
+      error.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      error.code === 22 ||
+      error.code === 1014)
+  )
 }
 
 async function readJsonSafely(response) {
@@ -482,18 +488,20 @@ export default function App({ experienceConfig } = {}) {
   useEffect(() => {
     try {
       const storedMeta = window.localStorage.getItem(journeyMetaKey)
-      const storedAssets = window.sessionStorage.getItem(journeyAssetKey)
       const meta = storedMeta ? JSON.parse(storedMeta) : {}
-      const assets = storedAssets ? JSON.parse(storedAssets) : {}
       const nextSelectedStyle = normaliseStyleId(meta.selectedStyle)
       const nextSelectedModifiers = normaliseModifierIds(meta.selectedModifiers)
       const nextPreserveLayout = normalisePreserveLayout(meta.preserveLayout)
       const nextOptionalNote = sanitizeOptionalNote(meta.optionalNote || '')
       const nextCompareTab = normaliseCompareTab(meta.compareTab)
-      const nextUploadedImage = normaliseStoredImage(assets.uploadedImage)
-      const nextResizedImage =
-        normaliseStoredImage(assets.resizedImage) || nextUploadedImage
-      const nextResult = normaliseStoredResult(assets.result)
+
+      // Legacy asset persistence stored large base64 payloads and can exceed browser quota.
+      // Clear any previous sessionStorage asset key and keep only lightweight metadata.
+      try {
+        window.sessionStorage.removeItem(journeyAssetKey)
+      } catch (storageError) {
+        console.warn('Failed to clear legacy journey assets', storageError)
+      }
 
       if (storedMeta) {
         setSelectedStyle(nextSelectedStyle)
@@ -504,13 +512,7 @@ export default function App({ experienceConfig } = {}) {
         setLeadSubmitted(Boolean(meta.leadSubmitted))
       }
 
-      if (storedAssets) {
-        setUploadedImage(nextUploadedImage)
-        setResizedImage(nextResizedImage)
-        setResult(nextResult)
-      }
-
-      setStep(normaliseStep(meta.step, nextUploadedImage, nextSelectedStyle, nextResult))
+      setStep(normaliseStep(meta.step, null, nextSelectedStyle, null))
     } catch (error) {
       console.warn('Failed to restore local journey state', error)
     } finally {
@@ -522,9 +524,6 @@ export default function App({ experienceConfig } = {}) {
     if (!hasRestoredJourney.current) return
 
     try {
-      const resolvedStep = step === 'generating'
-        ? normaliseStep('style', uploadedImage, selectedStyle, result)
-        : step
       const shouldStoreMeta = Boolean(
         selectedStyle ||
         selectedModifiers.length > 0 ||
@@ -534,13 +533,17 @@ export default function App({ experienceConfig } = {}) {
         leadSubmitted ||
         result
       )
-      const shouldStoreAssets = Boolean(uploadedImage || resizedImage || result)
+
+      try {
+        window.sessionStorage.removeItem(journeyAssetKey)
+      } catch (storageError) {
+        console.warn('Failed to clear legacy journey assets', storageError)
+      }
 
       if (shouldStoreMeta) {
         window.localStorage.setItem(
           journeyMetaKey,
           JSON.stringify({
-            step: resolvedStep,
             selectedStyle,
             selectedModifiers,
             preserveLayout,
@@ -553,26 +556,18 @@ export default function App({ experienceConfig } = {}) {
       } else {
         window.localStorage.removeItem(journeyMetaKey)
       }
-
-      if (shouldStoreAssets) {
-        window.sessionStorage.setItem(
-          journeyAssetKey,
-          JSON.stringify({
-            uploadedImage,
-            resizedImage,
-            result,
-          })
-        )
-      } else {
-        window.sessionStorage.removeItem(journeyAssetKey)
-      }
     } catch (error) {
+      if (isQuotaExceededError(error)) {
+        try {
+          window.sessionStorage.removeItem(journeyAssetKey)
+        } catch {}
+        console.warn('Skipped journey persistence because browser storage is full.', error)
+        return
+      }
+
       console.warn('Failed to persist local journey state', error)
     }
   }, [
-    step,
-    uploadedImage,
-    resizedImage,
     selectedStyle,
     selectedModifiers,
     preserveLayout,
@@ -580,8 +575,8 @@ export default function App({ experienceConfig } = {}) {
     compareTab,
     result,
     leadSubmitted,
-    journeyAssetKey,
     journeyMetaKey,
+    journeyAssetKey,
   ])
 
   const handleFile = useCallback(async (file) => {
