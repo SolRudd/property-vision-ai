@@ -232,7 +232,19 @@ async function submitLeadAPI(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  return response.json()
+  let payload = null
+
+  try {
+    payload = await response.json()
+  } catch {
+    payload = null
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.error || 'Failed to submit lead')
+  }
+
+  return payload || { success: true }
 }
 
 function createInitialUsageState(config) {
@@ -309,6 +321,7 @@ export default function App({ experienceConfig } = {}) {
   const [uploadError, setUploadError] = useState(null)
   const [leadSubmitted, setLeadSubmitted] = useState(false)
   const [leadLoading, setLeadLoading] = useState(false)
+  const [leadError, setLeadError] = useState(null)
   const [sessionUsage, setSessionUsage] = useState(createInitialUsageState(CLIENT_APP_CONFIG))
   const [authState, setAuthState] = useState(createInitialAuthState())
   const [lead, setLead] = useState(EMPTY_LEAD)
@@ -492,6 +505,7 @@ export default function App({ experienceConfig } = {}) {
 
     setUploadError(null)
     setGenError(null)
+    setLeadError(null)
 
     try {
       const { previewDataUrl } = await normaliseUploadPreview(file)
@@ -548,6 +562,7 @@ export default function App({ experienceConfig } = {}) {
     setStep('generating')
     setGenStage(0)
     setGenError(null)
+    setLeadError(null)
 
     const stageTimer = window.setInterval(() => {
       setGenStage((current) => Math.min(current + 1, GEN_STAGES.length - 1))
@@ -598,27 +613,34 @@ export default function App({ experienceConfig } = {}) {
   const submitLead = async (event) => {
     event.preventDefault()
     setLeadLoading(true)
-    await submitLeadAPI({
-      ...lead,
-      conceptId: result?.conceptId || null,
-      companySlug: resolvedConfig.slug,
-      companyName: resolvedConfig.companyName,
-      websiteLink: resolvedConfig.websiteLink,
-      leadDestination: resolvedConfig.leadDestination,
-      conceptSummary: result?.prompt?.summary,
-      styleId: result?.styleId,
-      styleLabel: STYLE_LABELS[result?.styleId] || null,
-      modifiers: result?.modifiers || selectedModifiers,
-      preserveLayout: result?.preserveLayout || preserveLayout,
-      optionalNote: result?.optionalNote || optionalNote,
-      generationUsage: {
-        completedGenerations: sessionUsage.completedGenerations,
-        remainingGenerations: sessionUsage.remainingGenerations,
-        maxFreeGenerations: sessionUsage.maxFreeGenerations,
-      },
-    })
-    setLeadLoading(false)
-    setLeadSubmitted(true)
+    setLeadError(null)
+
+    try {
+      await submitLeadAPI({
+        ...lead,
+        conceptId: result?.conceptId || null,
+        companySlug: resolvedConfig.slug,
+        companyName: resolvedConfig.companyName,
+        websiteLink: resolvedConfig.websiteLink,
+        leadDestination: resolvedConfig.leadDestination,
+        conceptSummary: result?.prompt?.summary,
+        styleId: result?.styleId,
+        styleLabel: STYLE_LABELS[result?.styleId] || null,
+        modifiers: result?.modifiers || selectedModifiers,
+        preserveLayout: result?.preserveLayout || preserveLayout,
+        optionalNote: result?.optionalNote || optionalNote,
+        generationUsage: {
+          completedGenerations: sessionUsage.completedGenerations,
+          remainingGenerations: sessionUsage.remainingGenerations,
+          maxFreeGenerations: sessionUsage.maxFreeGenerations,
+        },
+      })
+      setLeadSubmitted(true)
+    } catch (error) {
+      setLeadError(error.message || 'We could not submit your details just now. Please try again.')
+    } finally {
+      setLeadLoading(false)
+    }
   }
 
   const toggleModifier = (modifierId) => {
@@ -672,6 +694,7 @@ export default function App({ experienceConfig } = {}) {
     setUploadError(null)
     setLeadSubmitted(false)
     setLeadLoading(false)
+    setLeadError(null)
     setLead(EMPTY_LEAD)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [journeyAssetKey, journeyMetaKey])
@@ -1289,6 +1312,8 @@ export default function App({ experienceConfig } = {}) {
               <p className="gv-lead-sub">
                 Share your details to continue this design direction with {resolvedConfig.leadDestination.label}, who can turn it into a real proposal.
               </p>
+
+              {leadError && <div className="gv-error">⚠ {leadError}</div>}
 
               {result && (
                 <div className="gv-lead-preview">
