@@ -48,6 +48,13 @@ const VARIATIONS = [
   { id: 'more-practical', label: 'More practical' },
 ]
 
+const STYLE_IDS = new Set(STYLES.map((style) => style.id))
+const MODIFIER_IDS = new Set([
+  ...MODIFIERS.map((modifier) => modifier.id),
+  ...VARIATIONS.map((variation) => variation.id),
+])
+const PRESERVE_LAYOUT_IDS = new Set(PRESERVE_LAYOUT_OPTIONS.map((option) => option.id))
+const COMPARE_TABS = new Set(['before', 'after'])
 const VARIATION_IDS = new Set(VARIATIONS.map((variation) => variation.id))
 const STYLE_LABELS = Object.fromEntries(STYLES.map((style) => [style.id, style.label]))
 const MODIFIER_COMMENTARY = {
@@ -103,6 +110,83 @@ function buildThemeStyle(theme) {
     '--gv-subtle': theme.subtle,
     '--gv-subtle-muted': theme.subtleMuted,
     '--gv-cream': theme.cream,
+  }
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function normaliseStyleId(value) {
+  return typeof value === 'string' && STYLE_IDS.has(value) ? value : null
+}
+
+function normaliseModifierIds(value, max = 4) {
+  if (!Array.isArray(value)) return []
+
+  return value
+    .filter((modifier) => typeof modifier === 'string' && MODIFIER_IDS.has(modifier))
+    .slice(0, max)
+}
+
+function normalisePreserveLayout(value) {
+  return typeof value === 'string' && PRESERVE_LAYOUT_IDS.has(value)
+    ? value
+    : 'strong'
+}
+
+function normaliseCompareTab(value) {
+  return typeof value === 'string' && COMPARE_TABS.has(value) ? value : 'after'
+}
+
+function normaliseStoredImage(value) {
+  return typeof value === 'string' && value.startsWith('data:image/') ? value : null
+}
+
+function normaliseStoredResult(value) {
+  if (!isRecord(value)) return null
+
+  const imageUrl =
+    typeof value.imageUrl === 'string' && value.imageUrl
+      ? value.imageUrl
+      : null
+
+  if (!imageUrl) {
+    return null
+  }
+
+  const prompt = isRecord(value.prompt)
+    ? {
+        ...value.prompt,
+        summary:
+          typeof value.prompt.summary === 'string' ? value.prompt.summary : null,
+        preview:
+          typeof value.prompt.preview === 'string' ? value.prompt.preview : null,
+        preserveLayout: normalisePreserveLayout(
+          value.prompt.preserveLayout || value.preserveLayout
+        ),
+      }
+    : null
+
+  return {
+    ...value,
+    imageUrl,
+    isDemo: Boolean(value.isDemo),
+    styleId: normaliseStyleId(value.styleId),
+    modifiers: normaliseModifierIds(value.modifiers),
+    preserveLayout: normalisePreserveLayout(value.preserveLayout),
+    optionalNote: sanitizeOptionalNote(value.optionalNote || ''),
+    prompt,
+    meta: isRecord(value.meta) ? value.meta : {},
+    conceptId: typeof value.conceptId === 'string' ? value.conceptId : null,
+  }
+}
+
+async function readJsonSafely(response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
   }
 }
 
@@ -214,16 +298,21 @@ async function callGenerateAPI(
     }),
   })
 
+  const payload = await readJsonSafely(response)
+
   if (!response.ok) {
-    const err = await response.json()
-    const error = new Error(err.error || 'Generation failed')
-    error.usage = err.usage
-    error.code = err.code
-    error.config = err.config
+    const error = new Error(payload?.error || 'Generation failed')
+    error.usage = payload?.usage
+    error.code = payload?.code
+    error.config = payload?.config
     throw error
   }
 
-  return response.json()
+  if (!isRecord(payload)) {
+    throw new Error('Generation service returned an unexpected response')
+  }
+
+  return payload
 }
 
 async function submitLeadAPI(data) {
@@ -232,13 +321,7 @@ async function submitLeadAPI(data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  let payload = null
-
-  try {
-    payload = await response.json()
-  } catch {
-    payload = null
-  }
+  const payload = await readJsonSafely(response)
 
   if (!response.ok) {
     throw new Error(payload?.error || 'Failed to submit lead')
@@ -276,14 +359,16 @@ function normaliseStep(step, uploadedImage, selectedStyle, result) {
 }
 
 function buildVariationModifiers(baseModifiers, variationId) {
-  const cleaned = baseModifiers.filter((modifier) => !VARIATION_IDS.has(modifier))
+  const cleaned = normaliseModifierIds(baseModifiers).filter(
+    (modifier) => !VARIATION_IDS.has(modifier)
+  )
   const trimmed = cleaned.slice(0, 2)
   return variationId ? [...trimmed, variationId] : trimmed
 }
 
 function buildDesignCommentary(styleId, modifiers = [], preserveLayout = 'strong') {
   const styleLabel = STYLE_LABELS[styleId] || 'selected'
-  const modifierNotes = modifiers
+  const modifierNotes = normaliseModifierIds(modifiers)
     .map((modifier) => MODIFIER_COMMENTARY[modifier])
     .filter(Boolean)
     .slice(0, 2)
@@ -367,12 +452,12 @@ export default function App({ experienceConfig } = {}) {
     let ignore = false
 
     fetch('/api/generate')
-      .then((response) => response.json())
+      .then((response) => readJsonSafely(response))
       .then((data) => {
         if (ignore) return
-        if (data.config) setRuntimeConfig(data.config)
-        if (data.usage) setSessionUsage(data.usage)
-        if (data.auth) {
+        if (data?.config) setRuntimeConfig(data.config)
+        if (data?.usage) setSessionUsage(data.usage)
+        if (data?.auth) {
           setAuthState({
             ready: true,
             enabled: Boolean(data.auth.enabled),
@@ -398,27 +483,34 @@ export default function App({ experienceConfig } = {}) {
     try {
       const storedMeta = window.localStorage.getItem(journeyMetaKey)
       const storedAssets = window.sessionStorage.getItem(journeyAssetKey)
+      const meta = storedMeta ? JSON.parse(storedMeta) : {}
+      const assets = storedAssets ? JSON.parse(storedAssets) : {}
+      const nextSelectedStyle = normaliseStyleId(meta.selectedStyle)
+      const nextSelectedModifiers = normaliseModifierIds(meta.selectedModifiers)
+      const nextPreserveLayout = normalisePreserveLayout(meta.preserveLayout)
+      const nextOptionalNote = sanitizeOptionalNote(meta.optionalNote || '')
+      const nextCompareTab = normaliseCompareTab(meta.compareTab)
+      const nextUploadedImage = normaliseStoredImage(assets.uploadedImage)
+      const nextResizedImage =
+        normaliseStoredImage(assets.resizedImage) || nextUploadedImage
+      const nextResult = normaliseStoredResult(assets.result)
 
       if (storedMeta) {
-        const meta = JSON.parse(storedMeta)
-        setSelectedStyle(meta.selectedStyle || null)
-        setSelectedModifiers(Array.isArray(meta.selectedModifiers) ? meta.selectedModifiers : [])
-        setPreserveLayout(meta.preserveLayout || 'strong')
-        setOptionalNote(sanitizeOptionalNote(meta.optionalNote || ''))
-        setCompareTab(meta.compareTab || 'after')
+        setSelectedStyle(nextSelectedStyle)
+        setSelectedModifiers(nextSelectedModifiers)
+        setPreserveLayout(nextPreserveLayout)
+        setOptionalNote(nextOptionalNote)
+        setCompareTab(nextCompareTab)
         setLeadSubmitted(Boolean(meta.leadSubmitted))
       }
 
       if (storedAssets) {
-        const assets = JSON.parse(storedAssets)
-        setUploadedImage(assets.uploadedImage || null)
-        setResizedImage(assets.resizedImage || assets.uploadedImage || null)
-        setResult(assets.result || null)
+        setUploadedImage(nextUploadedImage)
+        setResizedImage(nextResizedImage)
+        setResult(nextResult)
       }
 
-      const meta = storedMeta ? JSON.parse(storedMeta) : {}
-      const assets = storedAssets ? JSON.parse(storedAssets) : {}
-      setStep(normaliseStep(meta.step, assets.uploadedImage, meta.selectedStyle, assets.result))
+      setStep(normaliseStep(meta.step, nextUploadedImage, nextSelectedStyle, nextResult))
     } catch (error) {
       console.warn('Failed to restore local journey state', error)
     } finally {
@@ -591,13 +683,13 @@ export default function App({ experienceConfig } = {}) {
       setSelectedModifiers(modifiers)
       setPreserveLayout(nextPreserveLayout)
       setOptionalNote(sanitizedOptionalNote)
-      setResult({
+      setResult(normaliseStoredResult({
         ...data,
         styleId: nextStyle,
         modifiers,
         preserveLayout: nextPreserveLayout,
         optionalNote: sanitizedOptionalNote,
-      })
+      }))
       setCompareTab('after')
       setLeadSubmitted(false)
       setStep('result')
