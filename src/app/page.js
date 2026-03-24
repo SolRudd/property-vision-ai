@@ -319,9 +319,6 @@ export default function App({ experienceConfig } = {}) {
 
   const remaining = sessionUsage.remainingGenerations
   const isGenerating = step === 'generating'
-  const authRequiredForGeneration =
-    authState.ready && authState.enabled && !authState.signedIn
-  const authUnavailable = authState.ready && !authState.enabled
 
   useEffect(() => {
     if (!sessionUsage.cooldownEndsAt) return undefined
@@ -522,10 +519,6 @@ export default function App({ experienceConfig } = {}) {
     fileRef.current?.click()
   }, [])
 
-  const redirectToAuth = useCallback(() => {
-    window.location.href = authHref
-  }, [authHref])
-
   const onDrop = useCallback((event) => {
     event.preventDefault()
     setDragging(false)
@@ -539,15 +532,6 @@ export default function App({ experienceConfig } = {}) {
     nextOptionalNote = optionalNote,
   } = {}) => {
     if (!nextStyle || !resizedImage) return
-    if (!authState.ready) return
-    if (authUnavailable) {
-      setGenError('Account access is not configured yet. Please try again later.')
-      return
-    }
-    if (authRequiredForGeneration) {
-      redirectToAuth()
-      return
-    }
     if (remaining <= 0) {
       setStep('lead')
       return
@@ -606,18 +590,6 @@ export default function App({ experienceConfig } = {}) {
       window.clearInterval(stageTimer)
       if (error.config) setRuntimeConfig(error.config)
       if (error.usage) setSessionUsage(error.usage)
-      if (error.code === 'AUTH_REQUIRED') {
-        redirectToAuth()
-        return
-      }
-      if (error.code === 'AUTH_UNAVAILABLE') {
-        setAuthState({
-          ready: true,
-          enabled: false,
-          signedIn: false,
-          email: null,
-        })
-      }
       setGenError(error.message || 'Something went wrong. Please try again.')
       setStep('style')
     }
@@ -735,8 +707,8 @@ export default function App({ experienceConfig } = {}) {
         <div className="gv-header-actions">
           {authState.ready && authState.enabled && authState.signedIn ? (
             <>
-              <Link href="/gallery" className="gv-header-link">
-                My gallery
+              <Link href={authHref} className="gv-header-link">
+                Account
               </Link>
               <span className="gv-badge-dark">Signed in</span>
               <form action="/auth/logout" method="post" className="gv-header-form">
@@ -747,16 +719,12 @@ export default function App({ experienceConfig } = {}) {
               </form>
             </>
           ) : authState.ready && authState.enabled ? (
-            <>
-              <Link href={authHref} className="gv-header-link">
-                Sign in
-              </Link>
-              <span className="gv-badge-dark">Account required</span>
-            </>
-          ) : authState.ready ? (
-            <span className="gv-badge-dark">Account setup pending</span>
-          ) : (
-            <span className="gv-badge-dark">Checking account…</span>
+            <Link href={authHref} className="gv-header-link">
+              Optional sign in
+            </Link>
+          ) : null}
+          {authState.ready && !authState.enabled && (
+            <span className="gv-badge-dark">Public preview mode</span>
           )}
           {hasJourneyState && (
             <button
@@ -829,7 +797,7 @@ export default function App({ experienceConfig } = {}) {
               <span className="gv-cta-arrow">→</span>
             </button>
             <p className="gv-hero-note">
-              Concept images are for inspiration and planning purposes only · Free to try
+              Concept images are for inspiration and planning purposes only · Free to try · No sign-up required
             </p>
           </section>
 
@@ -996,23 +964,6 @@ export default function App({ experienceConfig } = {}) {
             <span className="gv-usage-count">{remaining} of {sessionUsage.maxFreeGenerations}</span>
           </div>
 
-          {authRequiredForGeneration && (
-            <div className="gv-auth-panel">
-              <div>
-                Create a free account to use your saved concept allowance and keep your previews linked to you.
-              </div>
-              <Link href={authHref} className="gv-text-btn">
-                Sign in or create account →
-              </Link>
-            </div>
-          )}
-
-          {authUnavailable && (
-            <div className="gv-auth-panel gv-auth-panel-muted">
-              Account access is not configured yet. Generation is temporarily unavailable.
-            </div>
-          )}
-
           {sessionUsage.cooldownRemainingSeconds > 0 && (
             <div className="gv-cooldown-note">
               Next generation available in {sessionUsage.cooldownRemainingSeconds}s
@@ -1117,42 +1068,25 @@ export default function App({ experienceConfig } = {}) {
               className="gv-cta"
               disabled={
                 !selectedStyle ||
-                !authState.ready ||
-                authUnavailable ||
                 sessionUsage.cooldownRemainingSeconds > 0 ||
                 isGenerating ||
                 sessionUsage.activeGeneration
               }
               onClick={() => {
-                if (authRequiredForGeneration) {
-                  redirectToAuth()
-                  return
-                }
-
                 runGeneration()
               }}
             >
-              {!authState.ready
-                ? 'Checking account…'
-                : authRequiredForGeneration
-                  ? 'Create free account to continue →'
-                  : remaining <= 0
-                    ? 'Upgrade to generate →'
-                    : sessionUsage.cooldownRemainingSeconds > 0
-                      ? `Cooldown ${sessionUsage.cooldownRemainingSeconds}s`
-                      : 'Create my design preview →'}
+              {remaining <= 0
+                ? 'Free previews used · Continue →'
+                : sessionUsage.cooldownRemainingSeconds > 0
+                  ? `Cooldown ${sessionUsage.cooldownRemainingSeconds}s`
+                  : 'Create my design preview →'}
             </button>
-            {!selectedStyle || sessionUsage.activeGeneration || authUnavailable ? (
+            {!selectedStyle || sessionUsage.activeGeneration ? (
               <span className="gv-cta-hint">
                 {!selectedStyle
                   ? 'Select a style above to continue'
-                  : authUnavailable
-                    ? 'Supabase Auth must be configured before generation can be used'
-                    : 'One generation can run at a time per session'}
-              </span>
-            ) : authRequiredForGeneration ? (
-              <span className="gv-cta-hint">
-                Sign in first. Your cooldown and session protections stay in place after that.
+                  : 'One generation can run at a time per session'}
               </span>
             ) : sessionUsage.cooldownRemainingSeconds > 0 ? (
               <span className="gv-cta-hint">Server cooldown is active between free generations</span>

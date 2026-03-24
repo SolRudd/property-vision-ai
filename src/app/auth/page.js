@@ -90,9 +90,6 @@ export default async function AuthPage({ searchParams }) {
           <Link href="/" className="mk-button mk-button-secondary">
             Back to preview
           </Link>
-          <Link href="/gallery" className="mk-button">
-            My gallery
-          </Link>
         </div>
       </header>
 
@@ -100,9 +97,9 @@ export default async function AuthPage({ searchParams }) {
         <section className="mk-section gv-auth-shell">
           <div className="mk-section-head">
             <div className="mk-eyebrow">Account Access</div>
-            <h1 className="mk-section-title">Save your concepts and keep the free preview flow linked to you.</h1>
+            <h1 className="mk-section-title">Use an account for saved concepts when you want it.</h1>
             <p className="mk-section-copy">
-              Keep the current experience lean: create a simple account, verify your email, and continue generating from the same branded landing page or public preview.
+              The public preview works without sign-up. This optional account layer is only for lightweight saved concepts and returning later with the same email.
             </p>
           </div>
 
@@ -117,7 +114,7 @@ export default async function AuthPage({ searchParams }) {
               <div className="mk-kicker">Setup incomplete</div>
               <h2 className="mk-card-title">Account access is not ready yet.</h2>
               <p className="mk-card-copy">
-                Supabase Auth needs <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> configured on the server before sign-up and login can be used.
+                Public preview generation is still available. Supabase Auth needs <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> configured on the server before optional sign-up and login can be used.
               </p>
               <div className="gv-auth-actions">
                 <Link href="/" className="mk-button">
@@ -130,14 +127,11 @@ export default async function AuthPage({ searchParams }) {
               <div className="mk-kicker">Signed in</div>
               <h2 className="mk-card-title">You are ready to continue.</h2>
               <p className="mk-card-copy">
-                Signed in as <strong>{authState.user.email}</strong>. You can go back to your current concept journey or open your saved gallery.
+                Signed in as <strong>{authState.user.email}</strong>. You can return to the public preview flow now and any future saved concepts can be linked to this account when storage is ready.
               </p>
               <div className="gv-auth-actions">
                 <Link href={nextPath} className="mk-button">
                   Continue
-                </Link>
-                <Link href="/gallery" className="mk-button mk-button-secondary">
-                  Open gallery
                 </Link>
                 <form action="/auth/logout" method="post">
                   <input type="hidden" name="next" value="/" />
@@ -153,7 +147,7 @@ export default async function AuthPage({ searchParams }) {
                 <div className="mk-kicker">Create account</div>
                 <h2 className="mk-card-title">Start your free account</h2>
                 <p className="mk-card-copy">
-                  Use email verification for a simple, low-friction account layer. Your current journey remains stored locally on this device.
+                  Use email verification for a simple, low-friction account layer. Your current journey still remains stored locally on this device either way.
                 </p>
 
                 <form action="/auth/signup" method="post" className="gv-auth-form">
@@ -197,9 +191,9 @@ export default async function AuthPage({ searchParams }) {
 
               <section className="mk-card gv-auth-card">
                 <div className="mk-kicker">Sign in</div>
-                <h2 className="mk-card-title">Return to your concepts</h2>
+                <h2 className="mk-card-title">Return with the same email</h2>
                 <p className="mk-card-copy">
-                  Sign in to continue generating and view your saved concept gallery.
+                  Sign in if you already created an account. The public preview flow still works without this.
                 </p>
 
                 <form action="/auth/login" method="post" className="gv-auth-form">

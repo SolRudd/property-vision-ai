@@ -238,68 +238,6 @@ export async function POST(request) {
         ? sourceImageBase64
         : imageBase64
 
-    if (!auth.enabled) {
-      const usage = getUsageSnapshot(sessionId, config)
-
-      await persistUsageFailure({
-        sessionId,
-        userId: null,
-        companySlug,
-        providerId,
-        styleId,
-        modifiers,
-        preserveLayout,
-        optionalNote: sanitizedOptionalNote,
-        usage,
-        error: {
-          code: 'AUTH_UNAVAILABLE',
-        },
-        status: 'blocked',
-      })
-
-      return buildResponse(
-        {
-          error: 'Account access is not configured yet. Please try again later.',
-          code: 'AUTH_UNAVAILABLE',
-          usage,
-          config: publicConfig,
-          auth,
-        },
-        { status: 503, sessionContext }
-      )
-    }
-
-    if (!authState.user) {
-      const usage = getUsageSnapshot(sessionId, config)
-
-      await persistUsageFailure({
-        sessionId,
-        userId: null,
-        companySlug,
-        providerId,
-        styleId,
-        modifiers,
-        preserveLayout,
-        optionalNote: sanitizedOptionalNote,
-        usage,
-        error: {
-          code: 'AUTH_REQUIRED',
-        },
-        status: 'blocked',
-      })
-
-      return buildResponse(
-        {
-          error: 'Please sign in to create free landscaping concepts.',
-          code: 'AUTH_REQUIRED',
-          usage,
-          config: publicConfig,
-          auth,
-        },
-        { status: 401, sessionContext }
-      )
-    }
-
     if (!imageBase64) {
       return buildResponse(
         {
