@@ -1,5 +1,4 @@
 import './globals.css'
-import './gardenvision.css'
 import Script from 'next/script'
 import { GoogleTagManager } from '@next/third-parties/google'
 import CookieConsentBanner from '../components/CookieConsentBanner'

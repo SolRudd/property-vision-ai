@@ -17,6 +17,8 @@ function normaliseSiteUrl(value) {
 export const SITE_CONFIG = {
   name: process.env.NEXT_PUBLIC_SITE_NAME || 'GardenVision AI',
   shortName: process.env.NEXT_PUBLIC_SITE_SHORT_NAME || 'GardenVision',
+  logoImageSrc: process.env.NEXT_PUBLIC_LOGO_IMAGE_SRC || null,
+  logoAlt: process.env.NEXT_PUBLIC_LOGO_ALT || 'Garden Visionary logo',
   logoPrimary: process.env.NEXT_PUBLIC_LOGO_PRIMARY || 'Garden',
   logoAccent: process.env.NEXT_PUBLIC_LOGO_ACCENT ?? 'Vision',
   description:
@@ -115,9 +117,9 @@ export function getSiteMetadata() {
       images: [SITE_CONFIG.ogImagePath],
     },
     icons: {
-      icon: '/icon.svg',
-      shortcut: '/icon.svg',
-      apple: '/icon.svg',
+      icon: '/icon.png',
+      shortcut: '/icon.png',
+      apple: '/icon.png',
     },
   }
 }

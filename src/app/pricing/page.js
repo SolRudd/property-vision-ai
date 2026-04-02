@@ -41,7 +41,7 @@ export default function PricingPage() {
       eyebrow="For homeowners"
       title="Simple customer image plans"
       description="This page is for customer image plans only. It keeps the homeowner path separate from branded rollout for landscaping companies."
-      primaryCta={{ href: '/', label: 'Try the free preview' }}
+      primaryCta={{ href: '/generate', label: 'Try the free preview' }}
       secondaryCta={{ href: '/contact', label: 'Ask a question' }}
       panel={
         <>

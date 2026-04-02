@@ -23,10 +23,10 @@ export const PUBLIC_EXPERIENCE_CONFIG = {
   slug: 'public',
   companyName: SITE_CONFIG.name,
   logo: {
-    imageSrc: null,
+    imageSrc: SITE_CONFIG.logoImageSrc,
     primaryText: SITE_CONFIG.logoPrimary,
     accentText: SITE_CONFIG.logoAccent,
-    alt: SITE_CONFIG.name,
+    alt: SITE_CONFIG.logoAlt,
   },
   heroHeadline: 'Your outdoor space,\nbeautifully reimagined',
   heroSubtext:

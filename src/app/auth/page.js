@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
+import SiteFooter from '../../components/site/SiteFooter'
+import SiteHeader from '../../components/site/SiteHeader'
 import { buildPageMetadata, SITE_CONFIG } from '../../lib/siteConfig'
 import {
   getSupabaseAuthConfig,
@@ -72,7 +74,7 @@ function getMessage(errorCode, statusCode) {
 
 export default async function AuthPage({ searchParams }) {
   const authConfig = getSupabaseAuthConfig()
-  const nextPath = sanitizeNextPath(readValue(searchParams?.next), '/')
+  const nextPath = sanitizeNextPath(readValue(searchParams?.next), '/generate')
   const statusCode = readValue(searchParams?.status)
   const errorCode = readValue(searchParams?.error)
   const message = getMessage(errorCode, statusCode)
@@ -80,18 +82,17 @@ export default async function AuthPage({ searchParams }) {
 
   return (
     <div className="mk-page">
-      <header className="mk-header">
-        <Link href="/" className="mk-logo">
-          {SITE_CONFIG.logoPrimary}
-          {SITE_CONFIG.logoAccent && <span>{SITE_CONFIG.logoAccent}</span>}
-        </Link>
-
-        <div className="mk-header-actions">
-          <Link href="/" className="mk-button mk-button-secondary">
-            Back to preview
-          </Link>
-        </div>
-      </header>
+      <SiteHeader
+        variant="marketing"
+        withBar
+        actions={
+          <div className="mk-header-actions">
+            <Link href="/generate" className="mk-button mk-button-secondary">
+              Back to preview
+            </Link>
+          </div>
+        }
+      />
 
       <main className="mk-main">
         <section className="mk-section gv-auth-shell">
@@ -117,7 +118,7 @@ export default async function AuthPage({ searchParams }) {
                 Public preview generation is still available. Supabase Auth needs <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> configured on the server before optional sign-up and login can be used.
               </p>
               <div className="gv-auth-actions">
-                <Link href="/" className="mk-button">
+                <Link href="/generate" className="mk-button">
                   Return to the app
                 </Link>
               </div>
@@ -134,7 +135,7 @@ export default async function AuthPage({ searchParams }) {
                   Continue
                 </Link>
                 <form action="/auth/logout" method="post">
-                  <input type="hidden" name="next" value="/" />
+                  <input type="hidden" name="next" value="/generate" />
                   <button type="submit" className="gv-header-reset gv-header-reset-dark">
                     Log out
                   </button>
@@ -233,6 +234,15 @@ export default async function AuthPage({ searchParams }) {
           )}
         </section>
       </main>
+
+      <SiteFooter
+        variant="marketing"
+        showBrand={false}
+        metaItems={[
+          { label: `© ${new Date().getFullYear()} ${SITE_CONFIG.name}. All rights reserved.`, className: '' },
+          { href: '/generate', label: 'Back to preview', className: 'mk-link' },
+        ]}
+      />
     </div>
   )
 }

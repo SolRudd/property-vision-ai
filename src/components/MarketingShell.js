@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { SITE_CONFIG } from '../lib/siteConfig'
+import SiteFooter from './site/SiteFooter'
+import SiteHeader from './site/SiteHeader'
 
 const NAV_ITEMS = [
   { href: '/pricing', label: 'Customer Plans' },
@@ -23,15 +24,6 @@ function ActionLink({ href, className, children }) {
   )
 }
 
-function BrandMark() {
-  return (
-    <>
-      {SITE_CONFIG.logoPrimary}
-      {SITE_CONFIG.logoAccent && <span>{SITE_CONFIG.logoAccent}</span>}
-    </>
-  )
-}
-
 export default function MarketingShell({
   eyebrow,
   title,
@@ -43,28 +35,22 @@ export default function MarketingShell({
 }) {
   return (
     <div className="mk-page">
-      <header className="mk-header">
-        <Link href="/" className="mk-logo">
-          <BrandMark />
-        </Link>
-
-        <nav className="mk-nav" aria-label="Marketing">
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className="mk-link">
-              {item.label}
+      <SiteHeader
+        variant="marketing"
+        navItems={NAV_ITEMS}
+        ariaLabel="Marketing"
+        withBar
+        actions={
+          <div className="mk-header-actions">
+            <Link href="/generate" className="mk-button mk-button-secondary">
+              Try free
             </Link>
-          ))}
-        </nav>
-
-        <div className="mk-header-actions">
-          <Link href="/" className="mk-button mk-button-secondary">
-            Try the preview
-          </Link>
-          <Link href="/contact" className="mk-button">
-            Request a demo
-          </Link>
-        </div>
-      </header>
+            <Link href="/contact" className="mk-button">
+              Book a demo
+            </Link>
+          </div>
+        }
+      />
 
       <main className="mk-main">
         <section className="mk-hero">
@@ -92,26 +78,11 @@ export default function MarketingShell({
         {children}
       </main>
 
-      <footer className="mk-footer">
-        <div className="mk-footer-inner">
-          <div className="mk-footer-brand">
-            <div className="mk-logo">
-              <BrandMark />
-            </div>
-            <p className="mk-footer-copy">
-              Premium landscaping visual previews for homeowners and lean branded rollout options for landscaping companies.
-            </p>
-          </div>
-
-          <div className="mk-footer-links">
-            {NAV_ITEMS.map((item) => (
-              <Link key={item.href} href={item.href} className="mk-link">
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </footer>
+      <SiteFooter
+        variant="marketing"
+        copy="Premium landscaping visual previews for homeowners and lean branded rollout options for landscaping companies."
+        navItems={NAV_ITEMS}
+      />
     </div>
   )
 }

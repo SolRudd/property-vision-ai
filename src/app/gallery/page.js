@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { buildPageMetadata, SITE_CONFIG } from '../../lib/siteConfig'
+import SiteHeader from '../../components/site/SiteHeader'
+import { buildPageMetadata } from '../../lib/siteConfig'
 import { isSupabaseConfigured, listConceptsForUser } from '../../lib/supabaseAdmin'
 import { getSupabaseAuthConfig, getSupabaseAuthState } from '../../lib/supabaseAuth'
 import { hydrateConceptStorageUrls } from '../../lib/supabaseStorage'
@@ -42,12 +43,7 @@ export default async function GalleryPage() {
   if (!authConfig.isConfigured) {
     return (
       <div className="mk-page">
-        <header className="mk-header">
-          <Link href="/" className="mk-logo">
-            {SITE_CONFIG.logoPrimary}
-            {SITE_CONFIG.logoAccent && <span>{SITE_CONFIG.logoAccent}</span>}
-          </Link>
-        </header>
+        <SiteHeader variant="marketing" />
 
         <main className="mk-main">
           <section className="mk-section">
@@ -57,7 +53,7 @@ export default async function GalleryPage() {
               <p className="mk-card-copy">
                 Supabase Auth and server persistence must be configured before user galleries can be shown.
               </p>
-              <Link href="/" className="mk-button">
+              <Link href="/generate" className="mk-button">
                 Return to the app
               </Link>
             </div>
@@ -89,24 +85,22 @@ export default async function GalleryPage() {
 
   return (
     <div className="mk-page">
-      <header className="mk-header">
-        <Link href="/" className="mk-logo">
-          {SITE_CONFIG.logoPrimary}
-          {SITE_CONFIG.logoAccent && <span>{SITE_CONFIG.logoAccent}</span>}
-        </Link>
-
-        <div className="mk-header-actions">
-          <Link href="/" className="mk-button mk-button-secondary">
-            New preview
-          </Link>
-          <form action="/auth/logout" method="post">
-            <input type="hidden" name="next" value="/" />
-            <button type="submit" className="gv-header-reset gv-header-reset-dark">
-              Log out
-            </button>
-          </form>
-        </div>
-      </header>
+      <SiteHeader
+        variant="marketing"
+        actions={
+          <div className="mk-header-actions">
+            <Link href="/generate" className="mk-button mk-button-secondary">
+              New preview
+            </Link>
+            <form action="/auth/logout" method="post">
+              <input type="hidden" name="next" value="/generate" />
+              <button type="submit" className="gv-header-reset gv-header-reset-dark">
+                Log out
+              </button>
+            </form>
+          </div>
+        }
+      />
 
       <main className="mk-main">
         <section className="mk-section">
@@ -133,7 +127,7 @@ export default async function GalleryPage() {
               <p className="mk-card-copy">
                 Start a new preview, generate a concept, and it will be linked to this account automatically.
               </p>
-              <Link href="/" className="mk-button">
+              <Link href="/generate" className="mk-button">
                 Create a concept
               </Link>
             </div>

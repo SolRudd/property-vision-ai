@@ -6,7 +6,7 @@ import {
   sanitizeNextPath,
 } from '../../../lib/supabaseAuth'
 
-function redirectToPath(request, nextPath = '/') {
+function redirectToPath(request, nextPath = '/generate') {
   return NextResponse.redirect(
     new URL(sanitizeNextPath(nextPath, '/'), request.url),
     303
@@ -15,7 +15,7 @@ function redirectToPath(request, nextPath = '/') {
 
 export async function POST(request) {
   const formData = await request.formData()
-  const nextPath = sanitizeNextPath(formData.get('next'), '/')
+  const nextPath = sanitizeNextPath(formData.get('next'), '/generate')
   const authConfig = getSupabaseAuthConfig()
 
   if (!authConfig.isConfigured) {

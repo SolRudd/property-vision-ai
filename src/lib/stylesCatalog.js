@@ -1,0 +1,92 @@
+export const STYLES = [
+  {
+    id: 'modern-minimal',
+    label: 'Modern Minimal',
+    category: 'Surfaces',
+    desc: 'Porcelain paving, structured planting, sleek edges',
+  },
+  {
+    id: 'luxury-patio',
+    label: 'Luxury Patio',
+    category: 'Surfaces',
+    desc: 'Premium stone, statement features, refined finish',
+  },
+  {
+    id: 'family-garden',
+    label: 'Family Garden',
+    category: 'Outdoor Living',
+    desc: 'Safe lawn, colour, practical and beautiful',
+  },
+  {
+    id: 'cottage-garden',
+    label: 'Cottage Garden',
+    category: 'Planting',
+    desc: 'Flowering borders, naturalistic, romantic',
+  },
+  {
+    id: 'contemporary',
+    label: 'Contemporary Living',
+    category: 'Structure',
+    desc: 'Indoor-outdoor flow, architectural planting',
+  },
+  {
+    id: 'low-maintenance',
+    label: 'Low Maintenance',
+    category: 'Practical',
+    desc: 'Gravel, evergreens, minimal upkeep',
+  },
+  {
+    id: 'premium-drive',
+    label: 'Premium Driveway',
+    category: 'Kerb Appeal',
+    desc: 'Block paving, lighting, kerb appeal',
+  },
+  {
+    id: 'natural-planting',
+    label: 'Natural Planting',
+    category: 'Planting',
+    desc: 'Wildflower, native species, ecological',
+  },
+  {
+    id: 'entertaining',
+    label: 'Entertaining Space',
+    category: 'Outdoor Living',
+    desc: 'Outdoor kitchen, dining, ambient lighting',
+  },
+  {
+    id: 'pergola-seating',
+    label: 'Pergola & Seating',
+    category: 'Structure',
+    desc: 'Covered structure, climbing plants, shade',
+  },
+  {
+    id: 'japanese-zen',
+    label: 'Japanese Zen',
+    category: 'Design',
+    desc: 'Raked gravel, bamboo, stone, calm geometry',
+  },
+  {
+    id: 'mediterranean',
+    label: 'Mediterranean',
+    category: 'Design',
+    desc: 'Terracotta, olives, lavender, warm tones',
+  },
+  {
+    id: 'tropical',
+    label: 'Tropical Garden',
+    category: 'Planting',
+    desc: 'Lush exotic foliage, bold planting, vivid',
+  },
+  {
+    id: 'kitchen-garden',
+    label: 'Kitchen Garden',
+    category: 'Practical',
+    desc: 'Raised beds, herbs, fruit trees, productive beauty',
+  },
+  {
+    id: 'modern-formal',
+    label: 'Modern Formal',
+    category: 'Structure',
+    desc: 'Symmetry, clipped hedging, elegant geometry',
+  },
+]

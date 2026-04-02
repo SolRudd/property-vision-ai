@@ -6,7 +6,7 @@ import {
   sanitizeNextPath,
 } from '../../../lib/supabaseAuth'
 
-function redirectToAuth(request, { next = '/', error } = {}) {
+function redirectToAuth(request, { next = '/generate', error } = {}) {
   const url = new URL('/auth', request.url)
   url.searchParams.set('next', sanitizeNextPath(next, '/'))
 
@@ -20,7 +20,7 @@ function redirectToAuth(request, { next = '/', error } = {}) {
 export async function GET(request) {
   const nextPath = sanitizeNextPath(
     request.nextUrl.searchParams.get('next'),
-    '/'
+    '/generate'
   )
   const code = request.nextUrl.searchParams.get('code')
   const authConfig = getSupabaseAuthConfig()

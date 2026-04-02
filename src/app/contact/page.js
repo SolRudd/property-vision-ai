@@ -42,7 +42,7 @@ export default function ContactPage() {
       title="Talk through plans, rollout, or the next step"
       description="This page supports both audience paths. Use it for customer plan questions, landscaper demos, or custom rollout conversations."
       primaryCta={{ href: mailtoHref, label: `Email ${SITE_CONFIG.contactEmail}` }}
-      secondaryCta={{ href: '/', label: 'Try the preview' }}
+      secondaryCta={{ href: '/generate', label: 'Try the preview' }}
       panel={
         <>
           <div className="mk-panel-kicker">Lean by design</div>

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import App from '../page'
+import ProductFlow from '../../components/app/ProductFlow'
 import {
   buildCompanyMetadata,
   getCompanyExperienceConfig,
@@ -27,5 +27,5 @@ export default function CompanyLandingPage({ params }) {
     notFound()
   }
 
-  return <App experienceConfig={config} />
+  return <ProductFlow experienceConfig={config} />
 }
